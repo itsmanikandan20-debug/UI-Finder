@@ -27,10 +27,13 @@ spec — see "What's not built yet" below.
 
 ```
 Wireframe editor (React Konva)
-        │  draw sections/rows/columns/headings/boxes/images/buttons
+        │  free-hand drawing — no Section/Row/Heading/Image type picker;
+        │  a shape containing others nests automatically, repeated
+        │  similarly-sized shapes group automatically
         ▼
 normalizeWireframe()            src/lib/layout/normalize.ts
-        │  → LayoutNode tree, 0..1 ratios, repeated groups auto-detected
+        │  → LayoutNode tree, 0..1 ratios; structure (section/row/column
+        │  vs. plain leaf) inferred from geometry, not from a type tag
         ▼
 POST /api/search                src/app/api/search/route.ts
         │
@@ -42,7 +45,8 @@ rankCandidates()                src/services/matcher/rank.ts
         │  signature-vector pre-filter → detailed structural/geometry/
         │  spacing/visual scoring → ranked matches
         ▼
-Results UI                      match cards, similarity score, "Open Matching Section"
+Results UI                      screenshot, website name, URL, one button
+                                 ("Open Matching Section" / "Open Live Page")
 ```
 
 Separately, **the crawler** (`src/services/crawler/`) is what populates
@@ -261,10 +265,21 @@ interface LayoutNode {
 
 Absolute pixels are thrown away immediately — a 1200px-wide section and a
 1440px-wide section with the same proportions read as the same shape.
-Repeated elements (a row of cards) are auto-detected (3+ same-kind
-siblings of near-identical size) both in the editor and from real DOMs,
-and wrapped in a `repeated_group` node so "4 repeated cards" is a first-class,
-directly comparable fact rather than 4 separate coincidences.
+Repeated elements (a row of cards) are auto-detected — 3+ siblings of
+near-identical size (from real DOM element types on the crawler side;
+purely by size for the editor's free-hand shapes, which carry no type at
+all) — and wrapped in a `repeated_group` node so "4 repeated cards" is a
+first-class, directly comparable fact rather than 4 separate coincidences.
+
+The designer never tags what a shape represents (no Section/Row/Heading/
+Image picker) — every stroke is just a bounding box. `normalize.ts`
+infers structure from geometry alone: a shape containing others becomes a
+`section` (if top-level — these are what the matcher compares against)
+or a `row`/`column` (if nested, direction inferred from how its children
+are arranged); a shape with nothing inside it is a plain `box` leaf. This
+means the wireframe side of a match never claims `hasImage`/`hasText` —
+only a real crawled page's actual DOM elements do — an honest tradeoff
+for not requiring the designer to label anything.
 
 ## Matching
 

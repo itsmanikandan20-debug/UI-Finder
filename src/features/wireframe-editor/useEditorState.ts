@@ -2,8 +2,8 @@
 
 import { useCallback, useState } from "react";
 import { randomId } from "@/lib/id";
-import type { EditorDocument, EditorElementKind, ViewportLabel } from "@/lib/layout/types";
-import { ELEMENT_DEFAULTS, type CanvasElement } from "./types";
+import type { EditorDocument, ViewportLabel } from "@/lib/layout/types";
+import type { CanvasElement } from "./types";
 
 const ARTBOARD_WIDTH: Record<ViewportLabel, number> = {
   desktop: 1440,
@@ -11,24 +11,25 @@ const ARTBOARD_WIDTH: Record<ViewportLabel, number> = {
   mobile: 390,
 };
 
+const MIN_STROKE_SIZE = 8; // px — discards an accidental click-without-dragging
+
 /**
- * Auto-nesting: rather than requiring the designer to explicitly drag
- * elements "into" a section/row/column (a whole extra interaction model
- * a quick sketching tool doesn't need), a container assignment is
- * recomputed from pure geometry after every move/resize — whichever
- * section/row/column an element's box sits inside of, tightest fit wins.
- * A candidate must be meaningfully larger in area, which also guarantees
- * this can never produce a cycle.
+ * Auto-nesting: rather than requiring the designer to explicitly drag a
+ * shape "into" another (a whole extra interaction model a quick sketching
+ * tool doesn't need), a container assignment is recomputed from pure
+ * geometry after every move/resize/new stroke — whichever other shape a
+ * box sits inside of, tightest fit wins. Any shape can act as a container
+ * now (there's no more "this one's a Section, that one's just a Box" —
+ * the designer never tags either). A candidate must be meaningfully larger
+ * in area, which also guarantees this can never produce a cycle.
  */
 function computeParents(elements: CanvasElement[]): CanvasElement[] {
-  const containers = elements.filter((e) => e.kind === "section" || e.kind === "row" || e.kind === "column");
-
   return elements.map((el) => {
     let bestParentId: string | null = null;
     let bestArea = Infinity;
     const elArea = el.width * el.height;
 
-    for (const c of containers) {
+    for (const c of elements) {
       if (c.id === el.id) continue;
       const cArea = c.width * c.height;
       if (cArea <= elArea * 1.02) continue;
@@ -49,10 +50,22 @@ function computeParents(elements: CanvasElement[]): CanvasElement[] {
   });
 }
 
+/** [x0, y0, x1, y1, ...] -> bounding box in the same (absolute) coordinate space. */
+function boundingBoxOf(points: number[]): { x: number; y: number; width: number; height: number } {
+  const xs = points.filter((_, i) => i % 2 === 0);
+  const ys = points.filter((_, i) => i % 2 === 1);
+  const x0 = Math.min(...xs);
+  const y0 = Math.min(...ys);
+  const x1 = Math.max(...xs);
+  const y1 = Math.max(...ys);
+  return { x: x0, y: y0, width: Math.max(x1 - x0, MIN_STROKE_SIZE), height: Math.max(y1 - y0, MIN_STROKE_SIZE) };
+}
+
 export function useEditorState() {
   const [viewportLabel, setViewportLabel] = useState<ViewportLabel>("desktop");
   const [elements, setElementsRaw] = useState<CanvasElement[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draftPoints, setDraftPoints] = useState<number[] | null>(null);
 
   const artboardWidth = ARTBOARD_WIDTH[viewportLabel];
   const artboardHeight = Math.round(artboardWidth * 0.72);
@@ -61,26 +74,48 @@ export function useEditorState() {
     setElementsRaw((prev) => computeParents(updater(prev)));
   }, []);
 
-  const addElement = useCallback(
-    (kind: EditorElementKind) => {
-      const defaults = ELEMENT_DEFAULTS[kind];
+  const startStroke = useCallback((x: number, y: number) => {
+    setSelectedId(null);
+    setDraftPoints([x, y]);
+  }, []);
+
+  const extendStroke = useCallback((x: number, y: number) => {
+    setDraftPoints((prev) => (prev ? [...prev, x, y] : prev));
+  }, []);
+
+  /**
+   * Takes the just-finished path explicitly rather than reading draftPoints
+   * from a setState updater — a functional setState updater must be pure,
+   * and React (Strict Mode, in dev) double-invokes it to check exactly
+   * that. This one wasn't: it had side effects (a random id, two other
+   * setState calls), which meant every stroke was silently drawn twice.
+   */
+  const endStroke = useCallback(
+    (points: number[] | null) => {
+      setDraftPoints(null);
+      if (!points || points.length < 2) return;
+      const box = boundingBoxOf(points);
+      // Store the path relative to the box's own top-left corner, so
+      // moving/resizing the box later never needs to touch these points.
+      const relativePoints = points.map((v, i) => v - (i % 2 === 0 ? box.x : box.y));
       const id = randomId();
-      const width = Math.min(defaults.width, artboardWidth - 40);
-      applyUpdate((prev) => [
-        ...prev,
+      applyUpdate((els) => [
+        ...els,
         {
           id,
-          kind,
-          x: Math.max(20, Math.round((artboardWidth - width) / 2)),
-          y: 30 + (prev.length % 6) * 30,
-          width,
-          height: defaults.height,
+          points: relativePoints,
+          x: box.x,
+          y: box.y,
+          width: box.width,
+          height: box.height,
+          baseWidth: box.width,
+          baseHeight: box.height,
           parentId: null,
         },
       ]);
       setSelectedId(id);
     },
-    [applyUpdate, artboardWidth]
+    [applyUpdate]
   );
 
   const updateElement = useCallback(
@@ -121,6 +156,7 @@ export function useEditorState() {
   const clearAll = useCallback(() => {
     setElementsRaw([]);
     setSelectedId(null);
+    setDraftPoints(null);
   }, []);
 
   const exportDocument = useCallback((): EditorDocument => {
@@ -129,9 +165,8 @@ export function useEditorState() {
       artboardWidth,
       artboardHeight,
       viewportLabel,
-      elements: elements.map(({ id, kind, x, y, width, height, parentId, groupId }) => ({
+      elements: elements.map(({ id, x, y, width, height, parentId, groupId }) => ({
         id,
-        kind,
         x,
         y,
         width,
@@ -150,7 +185,10 @@ export function useEditorState() {
     elements,
     selectedId,
     setSelectedId,
-    addElement,
+    draftPoints,
+    startStroke,
+    extendStroke,
+    endStroke,
     updateElement,
     deleteSelected,
     duplicateSelected,

@@ -1,26 +1,11 @@
 "use client";
 
-import {
-  Heading1,
-  Type,
-  Image as ImageIcon,
-  RectangleHorizontal,
-  Columns,
-  Rows,
-  SquareStack,
-  Square,
-  Copy,
-  Trash2,
-  Wand2,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import type { EditorElementKind, ViewportLabel } from "@/lib/layout/types";
-import { ELEMENT_DEFAULTS } from "@/features/wireframe-editor/types";
+import { Copy, Trash2, Wand2 } from "lucide-react";
+import type { ViewportLabel } from "@/lib/layout/types";
 
 interface Props {
   viewportLabel: ViewportLabel;
   onViewportChange: (v: ViewportLabel) => void;
-  onAdd: (kind: EditorElementKind) => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onClear: () => void;
@@ -29,21 +14,9 @@ interface Props {
   canAnalyze: boolean;
 }
 
-const ADDABLE: { kind: EditorElementKind; icon: LucideIcon }[] = [
-  { kind: "section", icon: SquareStack },
-  { kind: "row", icon: Rows },
-  { kind: "column", icon: Columns },
-  { kind: "heading", icon: Heading1 },
-  { kind: "text", icon: Type },
-  { kind: "image", icon: ImageIcon },
-  { kind: "button", icon: RectangleHorizontal },
-  { kind: "box", icon: Square },
-];
-
 export function Toolbar({
   viewportLabel,
   onViewportChange,
-  onAdd,
   onDuplicate,
   onDelete,
   onClear,
@@ -53,17 +26,7 @@ export function Toolbar({
 }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-white p-3 shadow-panel">
-      {ADDABLE.map(({ kind, icon: Icon }) => (
-        <button
-          key={kind}
-          type="button"
-          onClick={() => onAdd(kind)}
-          className="flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-sm text-ink-soft transition hover:border-brand-400 hover:text-brand-600"
-        >
-          <Icon size={16} />
-          {ELEMENT_DEFAULTS[kind].label}
-        </button>
-      ))}
+      <p className="text-sm text-ink-muted">Draw directly on the canvas below — click and drag to sketch a shape.</p>
 
       <div className="mx-1 h-6 w-px bg-border" />
 

@@ -120,7 +120,6 @@ export default function HomePage() {
       <Toolbar
         viewportLabel={editor.viewportLabel}
         onViewportChange={editor.setViewportLabel}
-        onAdd={editor.addElement}
         onDuplicate={editor.duplicateSelected}
         onDelete={editor.deleteSelected}
         onClear={editor.clearAll}
@@ -133,17 +132,21 @@ export default function HomePage() {
         <WireframeCanvas
           elements={editor.elements}
           selectedId={editor.selectedId}
+          draftPoints={editor.draftPoints}
           artboardWidth={editor.artboardWidth}
           artboardHeight={editor.artboardHeight}
           onSelect={editor.setSelectedId}
           onChange={editor.updateElement}
+          onStartStroke={editor.startStroke}
+          onExtendStroke={editor.extendStroke}
+          onEndStroke={editor.endStroke}
         />
       </div>
 
       <p className="mt-2 text-xs text-ink-muted">
-        Tip: drop a Heading and a few Boxes/Images inside a Section, then select one and hit
-        Duplicate a couple of times to sketch a repeated card row — elements inside a
-        Section/Row/Column are grouped automatically by position, no manual nesting needed.
+        Tip: draw a big shape first, then smaller ones inside it to group them together —
+        a shape containing others becomes one section; draw a few similarly-sized shapes in
+        a row to sketch a repeated card list, no manual grouping needed.
       </p>
 
       {error && (

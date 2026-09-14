@@ -1,43 +1,22 @@
-import type { EditorElementKind } from "@/lib/layout/types";
+// The designer draws free-hand — no Section/Row/Heading/Image type picker.
+// A CanvasElement is a pen stroke: `points` is the raw path, authored
+// relative to the shape's own bounding box at draw time (so (0,0) is the
+// box's top-left corner); x/y/width/height is that box's current position
+// and size on the artboard, which can move/resize independently of the
+// stroke's original path (resizing scales the path rather than redrawing
+// it — see WireframeCanvas.tsx).
 
 export interface CanvasElement {
   id: string;
-  kind: EditorElementKind;
+  /** Flat [x0, y0, x1, y1, ...] pairs, relative to the box's own top-left corner at draw time. */
+  points: number[];
   x: number;
   y: number;
   width: number;
   height: number;
+  /** The box's size when the stroke was drawn — the reference `points` was authored against; width/height divided by these give the current display scale. */
+  baseWidth: number;
+  baseHeight: number;
   parentId: string | null;
   groupId?: string;
 }
-
-export interface ElementStyle {
-  width: number;
-  height: number;
-  fill: string;
-  stroke: string;
-  label: string;
-  dashed?: boolean;
-}
-
-export const ELEMENT_DEFAULTS: Record<EditorElementKind, ElementStyle> = {
-  section: { width: 900, height: 320, fill: "rgba(53,104,224,0.03)", stroke: "#9AB2E8", label: "Section", dashed: true },
-  row: { width: 700, height: 120, fill: "rgba(53,104,224,0.05)", stroke: "#B7C7EF", label: "Row", dashed: true },
-  column: { width: 220, height: 320, fill: "rgba(53,104,224,0.05)", stroke: "#B7C7EF", label: "Column", dashed: true },
-  heading: { width: 360, height: 48, fill: "#E5ECFB", stroke: "#8FB6FF", label: "Heading" },
-  text: { width: 320, height: 32, fill: "#F1F1F6", stroke: "#D2D0DF", label: "Text" },
-  image: { width: 280, height: 180, fill: "#E7E5EE", stroke: "#B8B4C9", label: "Image" },
-  button: { width: 140, height: 44, fill: "#3568E0", stroke: "#264FBF", label: "Button" },
-  box: { width: 220, height: 160, fill: "#F1EFF6", stroke: "#D2D0DF", label: "Box" },
-};
-
-export const ADDABLE_KINDS: EditorElementKind[] = [
-  "section",
-  "row",
-  "column",
-  "heading",
-  "text",
-  "image",
-  "button",
-  "box",
-];

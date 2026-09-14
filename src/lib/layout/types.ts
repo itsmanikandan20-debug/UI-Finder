@@ -63,20 +63,14 @@ export interface Wireframe {
 // The canvas works in absolute pixels on a fixed-width artboard. This is
 // converted into the normalized LayoutNode tree by normalize.ts before it
 // is ever sent to the matcher — the matcher never sees raw pixels.
-
-export type EditorElementKind =
-  | "section"
-  | "row"
-  | "column"
-  | "heading"
-  | "text"
-  | "image"
-  | "button"
-  | "box";
+//
+// The designer draws freely (no Section/Row/Heading/Image type picker) —
+// an EditorElement is just a shape's bounding box. normalize.ts infers
+// structure (section/row/column vs. a plain leaf) from geometry alone:
+// containment for nesting, position/size for grouping and repetition.
 
 export interface EditorElement {
   id: string;
-  kind: EditorElementKind;
   x: number;
   y: number;
   width: number;
