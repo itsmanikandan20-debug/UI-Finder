@@ -107,11 +107,54 @@ describe("understandWireframe", () => {
     expect(promptText).not.toContain("section-1");
   });
 
-  it("reports the HTTP status when Gemini responds with a non-OK status", async () => {
-    mockGeminiResponse("", false, 429);
+  it("reports the HTTP status when Gemini responds with a non-OK status, without trying another model", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      json: async () => ({}),
+    } as Response));
+    vi.stubGlobal("fetch", fetchMock);
     const result = await understandWireframe(makeWireframe());
     expect(result.understanding).toBeNull();
     expect(result.diagnostic).toContain("429");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("includes Google's error message in the diagnostic when the error body has one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: { message: "API key not valid." } }),
+      } as Response))
+    );
+    const result = await understandWireframe(makeWireframe());
+    expect(result.diagnostic).toContain("API key not valid.");
+  });
+
+  it("falls back to the next model name on a 404 (model not found for this key), and succeeds if that one works", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("gemini-2.0-flash")) {
+        return { ok: false, status: 404, json: async () => ({ error: { message: "models/gemini-2.0-flash is not found" } }) } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: VALID_JSON }] } }] }) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await understandWireframe(makeWireframe());
+    expect(result.understanding).not.toBeNull();
+    expect(result.diagnostic).toBe("ok");
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("reports the last model's diagnostic when every candidate model 404s", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 404, json: async () => ({ error: { message: "model not found" } }) } as Response))
+    );
+    const result = await understandWireframe(makeWireframe());
+    expect(result.understanding).toBeNull();
+    expect(result.diagnostic).toContain("model not found");
   });
 
   it("reports a network error when the request throws", async () => {

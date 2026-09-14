@@ -9,7 +9,13 @@ import { z } from "zod";
 import { getMatchableSections } from "@/lib/layout/normalize";
 import type { LayoutNode, Wireframe } from "@/lib/layout/types";
 
-const GEMINI_MODEL = "gemini-2.0-flash";
+// Google renames/retires Gemini model ids over time, and a given API key's
+// account can have access to a different set than another — a single
+// hardcoded model name is exactly the kind of thing that silently starts
+//404ing. Tried in order; only a 404 (model not found/unavailable) moves on
+// to the next one — any other failure (bad key, blocked content, quota) is
+// real and reported immediately rather than retried three times over.
+const GEMINI_MODEL_CANDIDATES = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"];
 const FETCH_TIMEOUT_MS = 15000;
 
 export interface WireframeUnderstanding {
@@ -61,18 +67,23 @@ interface GeminiApiResponse {
   promptFeedback?: { blockReason?: string };
 }
 
-/** Fails open (null understanding + a diagnostic) on any error — this is one optional feature among several, never something that should crash the page. */
-export async function understandWireframe(wireframe: Wireframe): Promise<GeminiUnderstandingResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return { understanding: null, diagnostic: "GEMINI_API_KEY is not set — internet image search is inactive." };
-  }
+interface GeminiErrorBody {
+  error?: { message?: string };
+}
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(
+interface GeminiAttempt {
+  understanding: WireframeUnderstanding | null;
+  diagnostic: string;
+  /** True only for "this model name isn't available for this key" (HTTP 404) — worth trying the next candidate model. Any other failure is reported as-is. */
+  retryNextModel: boolean;
+}
+
+async function callGemini(model: string, prompt: string, apiKey: string): Promise<GeminiAttempt> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
     apiKey
   )}`;
   const body = {
-    contents: [{ parts: [{ text: buildPrompt(wireframe) }] }],
+    contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { responseMimeType: "application/json" },
   };
 
@@ -92,18 +103,29 @@ export async function understandWireframe(wireframe: Wireframe): Promise<GeminiU
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { understanding: null, diagnostic: `network error reaching Gemini: ${message}` };
+    return { understanding: null, diagnostic: `network error reaching Gemini: ${message}`, retryNextModel: false };
   }
 
   if (!res.ok) {
-    return { understanding: null, diagnostic: `Gemini responded with HTTP ${res.status}` };
+    let detail = "";
+    try {
+      const errorBody = (await res.json()) as GeminiErrorBody;
+      if (errorBody.error?.message) detail = ` — ${errorBody.error.message}`;
+    } catch {
+      // Body wasn't JSON (or had no error.message) — report the bare status only.
+    }
+    return {
+      understanding: null,
+      diagnostic: `Gemini responded with HTTP ${res.status} for model "${model}"${detail}`,
+      retryNextModel: res.status === 404,
+    };
   }
 
   let data: GeminiApiResponse;
   try {
     data = (await res.json()) as GeminiApiResponse;
   } catch {
-    return { understanding: null, diagnostic: "Gemini response was not valid JSON" };
+    return { understanding: null, diagnostic: "Gemini response was not valid JSON", retryNextModel: false };
   }
 
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -114,6 +136,7 @@ export async function understandWireframe(wireframe: Wireframe): Promise<GeminiU
       diagnostic: blockReason
         ? `Gemini declined to respond (${blockReason})`
         : "Gemini returned no understanding for this wireframe",
+      retryNextModel: false,
     };
   }
 
@@ -121,13 +144,35 @@ export async function understandWireframe(wireframe: Wireframe): Promise<GeminiU
   try {
     parsed = JSON.parse(text);
   } catch {
-    return { understanding: null, diagnostic: "Gemini's reply was not valid JSON" };
+    return { understanding: null, diagnostic: "Gemini's reply was not valid JSON", retryNextModel: false };
   }
 
   const result = understandingSchema.safeParse(parsed);
   if (!result.success) {
-    return { understanding: null, diagnostic: "Gemini's reply did not match the expected format" };
+    return { understanding: null, diagnostic: "Gemini's reply did not match the expected format", retryNextModel: false };
   }
 
-  return { understanding: result.data, diagnostic: "ok" };
+  return { understanding: result.data, diagnostic: "ok", retryNextModel: false };
+}
+
+/** Fails open (null understanding + a diagnostic) on any error — this is one optional feature among several, never something that should crash the page. */
+export async function understandWireframe(wireframe: Wireframe): Promise<GeminiUnderstandingResult> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return { understanding: null, diagnostic: "GEMINI_API_KEY is not set — internet image search is inactive." };
+  }
+
+  const prompt = buildPrompt(wireframe);
+  let lastDiagnostic = "Gemini returned no understanding for this wireframe";
+
+  for (const model of GEMINI_MODEL_CANDIDATES) {
+    const attempt = await callGemini(model, prompt, apiKey);
+    if (attempt.retryNextModel) {
+      lastDiagnostic = attempt.diagnostic;
+      continue;
+    }
+    return { understanding: attempt.understanding, diagnostic: attempt.diagnostic };
+  }
+
+  return { understanding: null, diagnostic: lastDiagnostic };
 }
