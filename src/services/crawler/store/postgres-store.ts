@@ -19,12 +19,16 @@ export class PostgresSectionStore implements SectionStore {
 
   async saveWebsite(record: WebsiteRecord): Promise<void> {
     await this.sql`
-      insert into websites (id, domain, page_url, title, status, last_crawled_at)
-      values (${record.id}, ${record.domain}, ${record.pageUrl}, ${record.title ?? null}, ${record.status}, ${record.lastCrawledAt ?? null})
+      insert into websites (id, domain, page_url, title, status, last_crawled_at, crawler_version)
+      values (
+        ${record.id}, ${record.domain}, ${record.pageUrl}, ${record.title ?? null}, ${record.status},
+        ${record.lastCrawledAt ?? null}, ${record.crawlerVersion ?? null}
+      )
       on conflict (page_url) do update set
         title = excluded.title,
         status = excluded.status,
-        last_crawled_at = excluded.last_crawled_at
+        last_crawled_at = excluded.last_crawled_at,
+        crawler_version = excluded.crawler_version
     `;
   }
 
@@ -101,9 +105,17 @@ export class PostgresSectionStore implements SectionStore {
 
   async getWebsiteByUrl(pageUrl: string): Promise<WebsiteRecord | null> {
     const rows = await this.sql<
-      { id: string; domain: string; page_url: string; title: string | null; status: string; last_crawled_at: string | null }[]
+      {
+        id: string;
+        domain: string;
+        page_url: string;
+        title: string | null;
+        status: string;
+        last_crawled_at: string | null;
+        crawler_version: number | null;
+      }[]
     >`
-      select id, domain, page_url, title, status, last_crawled_at
+      select id, domain, page_url, title, status, last_crawled_at, crawler_version
       from websites where page_url = ${pageUrl} limit 1
     `;
     if (rows.length === 0) return null;
@@ -115,6 +127,7 @@ export class PostgresSectionStore implements SectionStore {
       title: r.title ?? undefined,
       status: r.status as WebsiteRecord["status"],
       lastCrawledAt: r.last_crawled_at ?? undefined,
+      crawlerVersion: r.crawler_version ?? undefined,
     };
   }
 }

@@ -10,6 +10,17 @@ import { captureSectionScreenshot } from "./screenshot";
 import type { ExtractedSection, WebsiteRecord } from "@/lib/layout/types";
 import type { SectionStore } from "./store/types";
 
+/**
+ * Bump this whenever a change alters what gets extracted from a page —
+ * section detection, LayoutNode conversion, or the fields captured on
+ * ExtractedSection/WebsiteRecord. scripts/crawl.ts's time-based re-crawl
+ * cache only reuses a cached record when its crawlerVersion matches this,
+ * so a code change that changes extraction always gets fresh data on the
+ * next `npm run crawl` instead of silently serving stale results for up
+ * to 14 days.
+ */
+export const CRAWLER_VERSION = 2;
+
 export interface AnalyzePageOptions {
   viewportWidth?: number;
   maxSections?: number;
@@ -113,6 +124,7 @@ export async function analyzePage(url: string, options: AnalyzePageOptions = {})
       title: pageTitle,
       status: challenge ? "blocked" : "crawled",
       lastCrawledAt: new Date().toISOString(),
+      crawlerVersion: CRAWLER_VERSION,
     };
 
     if (options.store) {

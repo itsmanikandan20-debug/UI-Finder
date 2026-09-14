@@ -9,7 +9,7 @@
 
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { analyzePage } from "@/services/crawler/analyzePage";
+import { analyzePage, CRAWLER_VERSION } from "@/services/crawler/analyzePage";
 import { createSectionStore } from "@/services/crawler/store";
 import { SEED_SITES } from "./seed-sites";
 
@@ -31,13 +31,20 @@ async function main() {
   for (const url of urls) {
     if (!force) {
       const existing = await store.getWebsiteByUrl(url);
-      if (existing?.lastCrawledAt) {
+      // A cached record only counts as fresh if it was produced by the
+      // CURRENT extraction logic — otherwise a crawler change (new
+      // fields, better section detection) would silently keep serving
+      // pre-change data for up to 14 days with no indication anything
+      // was stale.
+      if (existing?.lastCrawledAt && existing.crawlerVersion === CRAWLER_VERSION) {
         const age = Date.now() - new Date(existing.lastCrawledAt).getTime();
         if (age < CRAWL_CACHE_TTL_MS) {
           console.log(`Skipping ${url} — crawled ${Math.round(age / 86400000)}d ago (--force to re-crawl).`);
           skipped += 1;
           continue;
         }
+      } else if (existing?.lastCrawledAt) {
+        console.log(`Re-crawling ${url} — cached data is from an older crawler version.`);
       }
     }
 

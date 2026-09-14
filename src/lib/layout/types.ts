@@ -137,4 +137,13 @@ export interface WebsiteRecord {
   title?: string;
   status: "pending" | "crawled" | "failed" | "blocked";
   lastCrawledAt?: string;
+  /**
+   * Which version of the extraction logic (CRAWLER_VERSION in
+   * analyzePage.ts) produced this record's sections. scripts/crawl.ts's
+   * time-based re-crawl cache only applies when this matches the current
+   * version — otherwise a code change to what gets extracted (new
+   * fields, better section detection, ...) would silently keep serving
+   * old data for up to 14 days with no indication anything was stale.
+   */
+  crawlerVersion?: number;
 }
