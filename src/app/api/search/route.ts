@@ -1,56 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getMatchableSections } from "@/lib/layout/normalize";
-import type { LayoutNode, Wireframe } from "@/lib/layout/types";
+import type { Wireframe } from "@/lib/layout/types";
+import { wireframeSchema } from "@/lib/wireframe-schema";
 import { rankCandidates } from "@/services/matcher/rank";
 import { createSectionStore } from "@/services/crawler/store";
 import { resolveScreenshotUrl } from "@/lib/screenshot-url";
 import { buildSectionAnchor } from "@/lib/section-anchor";
 import type { SearchApiResponse, SectionSearchResult } from "@/lib/api-types";
-
-const layoutNodeSchema: z.ZodType<LayoutNode> = z.lazy(() =>
-  z.object({
-    id: z.string(),
-    kind: z.enum([
-      "root",
-      "section",
-      "row",
-      "column",
-      "repeated_group",
-      "heading",
-      "text",
-      "image",
-      "button",
-      "box",
-    ]),
-    x: z.number(),
-    y: z.number(),
-    width: z.number(),
-    height: z.number(),
-    children: z.array(layoutNodeSchema),
-    repeat: z
-      .object({ count: z.number(), direction: z.enum(["horizontal", "vertical"]) })
-      .optional(),
-    meta: z
-      .object({
-        hasImage: z.boolean().optional(),
-        hasText: z.boolean().optional(),
-        alignment: z.enum(["start", "center", "end", "stretch", "mixed"]).optional(),
-        gap: z.number().optional(),
-      })
-      .optional(),
-  })
-);
-
-const wireframeSchema = z.object({
-  id: z.string(),
-  viewport: z.object({
-    width: z.number(),
-    label: z.enum(["desktop", "tablet", "mobile"]),
-  }),
-  root: layoutNodeSchema,
-  createdAt: z.string(),
-});
 
 const bodySchema = z.object({ wireframe: wireframeSchema });
 

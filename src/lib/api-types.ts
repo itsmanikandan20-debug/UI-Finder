@@ -31,3 +31,32 @@ export interface SearchApiResponse {
   indexedSectionCount: number;
   warnings: string[];
 }
+
+// --- Internet UI-image search (additive to live-website matching) --------
+
+export interface ImageSearchRequestBody {
+  wireframe: Wireframe;
+}
+
+export interface WireframeUnderstanding {
+  detectedPattern: string;
+  structure: string;
+  layout: string;
+  searchQuery: string;
+}
+
+export interface ImageSearchResultItem {
+  imageUrl: string;
+  thumbnailUrl?: string;
+  sourceUrl: string;
+  sourceTitle?: string;
+}
+
+export interface ImageSearchApiResponse {
+  /** False when GEMINI_API_KEY and/or SERPAPI_API_KEY aren't set — the feature is inactive, not broken. */
+  configured: boolean;
+  /** Human-readable status — set whenever there's nothing to show (not configured, Gemini/SerpApi failed, or zero results). */
+  message?: string;
+  understanding: WireframeUnderstanding | null;
+  images: ImageSearchResultItem[];
+}

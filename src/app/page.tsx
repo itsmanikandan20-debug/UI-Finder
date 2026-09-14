@@ -8,7 +8,13 @@ import { normalizeWireframe } from "@/lib/layout/normalize";
 import { describeWireframe } from "@/lib/layout/describe";
 import { WireframeSummary } from "@/components/results/WireframeSummary";
 import { ResultsPanel } from "@/components/results/ResultsPanel";
-import type { SearchApiResponse, SearchRequestBody } from "@/lib/api-types";
+import { ImageSearchPanel } from "@/components/results/ImageSearchPanel";
+import type {
+  ImageSearchApiResponse,
+  ImageSearchRequestBody,
+  SearchApiResponse,
+  SearchRequestBody,
+} from "@/lib/api-types";
 import type { Wireframe } from "@/lib/layout/types";
 
 // Konva touches `window` at import time — must never run during SSR.
@@ -30,6 +36,13 @@ export default function HomePage() {
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Internet UI-image search — additive to, and independent from, live-website
+  // matching above. Its own status so a slow/failed Gemini+SerpApi call never
+  // blocks or clears the live-website results.
+  const [imageSearchStatus, setImageSearchStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [imageSearchResponse, setImageSearchResponse] = useState<ImageSearchApiResponse | undefined>();
+  const [imageSearchError, setImageSearchError] = useState<string | undefined>();
+
   function handleAnalyze() {
     setError(null);
     const doc = editor.exportDocument();
@@ -37,11 +50,37 @@ export default function HomePage() {
     setWireframe(nextWireframe);
     setSummary(describeWireframe(nextWireframe));
     setResults(null);
+    setImageSearchStatus("idle");
+    setImageSearchResponse(undefined);
+    setImageSearchError(undefined);
     setStage("reviewing");
   }
 
   function handleBackToEdit() {
     setStage("editing");
+  }
+
+  async function handleSearchImages() {
+    if (!wireframe) return;
+    setImageSearchStatus("loading");
+    setImageSearchError(undefined);
+    try {
+      const body: ImageSearchRequestBody = { wireframe };
+      const res = await fetch("/api/search-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.error ?? "Internet image search failed.");
+      }
+      setImageSearchResponse((await res.json()) as ImageSearchApiResponse);
+      setImageSearchStatus("done");
+    } catch (err) {
+      setImageSearchError(err instanceof Error ? err.message : "Something went wrong.");
+      setImageSearchStatus("error");
+    }
   }
 
   async function handleConfirmSearch() {
@@ -112,12 +151,18 @@ export default function HomePage() {
       )}
 
       {(stage === "reviewing" || stage === "results") && (
-        <div className="mt-6">
+        <div className="mt-6 space-y-4">
           <WireframeSummary
             summary={summary}
             onConfirm={handleConfirmSearch}
             onBack={handleBackToEdit}
             searching={searching}
+          />
+          <ImageSearchPanel
+            status={imageSearchStatus}
+            response={imageSearchResponse}
+            error={imageSearchError}
+            onSearch={handleSearchImages}
           />
         </div>
       )}

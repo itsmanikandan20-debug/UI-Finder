@@ -356,6 +356,33 @@ normally. When no usable snippet was captured (an image-only section, for
 instance), the button is honest about it: it opens the page normally and
 shows "≈N% down the page" instead of implying precision it doesn't have.
 
+## Internet UI-image search (optional, additive)
+
+A second, independent search mode alongside live-website section matching
+above — it never reads from or writes to the crawled-section index, and
+live-website matching keeps working exactly the same with or without it.
+
+```
+Wireframe geometry (LayoutNode tree — never a rendered image)
+        │
+        ▼
+understandWireframe()            src/services/imagesearch/gemini.ts
+        │  Gemini reads ONLY position/size/kind data and returns:
+        │  { detectedPattern, structure, layout, searchQuery }
+        ▼
+searchImages(searchQuery)        src/services/imagesearch/serpapi.ts
+        │  SerpApi's Google Images engine — a real, whole-web text search
+        ▼
+Real images + their source pages, shown with a link to open each source
+```
+
+The wireframe's *drawing* is never sent anywhere as an image — only Gemini's
+short text description of its shape becomes the search query, and that
+query is the only thing sent to SerpApi. Requires **both**
+`GEMINI_API_KEY` and `SERPAPI_API_KEY` (see `.env.example`); the "Search
+the Internet" button stays present but shows a plain-English "not set up
+yet" message — never an error — if either is missing.
+
 ## Crawler safety
 
 - **SSRF guard** (`src/services/crawler/url-safety.ts`): only http/https,
@@ -399,4 +426,6 @@ npm test                # vitest — matcher + normalizer unit tests
 ## Environment variables
 
 See `.env.example`. Everything is optional; the app runs fully with none
-of them set.
+of them set. `GEMINI_API_KEY` and `SERPAPI_API_KEY` together enable the
+"Internet UI-image search" feature above — see that section for what each
+one is used for and where to get a free key.
