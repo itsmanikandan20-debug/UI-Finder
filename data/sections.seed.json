@@ -1,0 +1,5 @@
+{
+  "_comment": "Empty by default. This file is the checked-in seed index the app reads with zero setup (see src/services/crawler/store/json-store.ts). It ships empty rather than with fabricated 'live site' data, per the product principle that every result must point at a real, currently-live webpage. Populate it for real by running `npm run crawl` (needs outbound internet access) — see README.md.",
+  "websites": [],
+  "sections": []
+}
