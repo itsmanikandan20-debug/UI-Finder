@@ -6,6 +6,11 @@ import { understandWireframe } from "@/services/imagesearch/gemini";
 import { searchImages } from "@/services/imagesearch/serpapi";
 import type { ImageSearchApiResponse } from "@/lib/api-types";
 
+// Gemini's model-fallback chain plus a live SerpApi search can together
+// take longer than a serverless platform's default function timeout —
+// raise the ceiling so a slow-but-successful run isn't cut off mid-request.
+export const maxDuration = 60;
+
 const bodySchema = z.object({ wireframe: wireframeSchema });
 
 export async function POST(req: NextRequest) {

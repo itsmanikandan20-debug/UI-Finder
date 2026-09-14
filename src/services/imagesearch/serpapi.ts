@@ -6,7 +6,9 @@
 // separate, additive feature from live-website matching.
 
 const SERPAPI_ENDPOINT = "https://serpapi.com/search.json";
-const FETCH_TIMEOUT_MS = 15000;
+// SerpApi proxies a live Google Images search, which can take noticeably
+// longer than a typical JSON API — 15s was cutting it close in practice.
+const FETCH_TIMEOUT_MS = 25000;
 const MAX_IMAGES = 9;
 
 export interface ImageSearchResultItem {
