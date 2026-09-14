@@ -130,6 +130,57 @@ LayoutNode conversion, screenshot capture, and matcher scoring all work
 correctly together. See `scripts/smoke-test-crawler.ts` to rerun that
 check yourself.
 
+## Automatic website discovery
+
+`npm run crawl` only ever touches the fixed list in `scripts/seed-sites.ts`.
+`npm run discover` (`scripts/discover-and-crawl.ts`) is the growth path:
+instead of a hand-maintained list, it works off a queue that grows itself.
+
+```bash
+npm run discover                # a small, safe batch (default 8 URLs)
+npm run discover -- --batch 20  # a bigger batch, once you trust the results
+```
+
+**How it grows the index without crawling "the whole internet" and
+without you maintaining a list:**
+
+1. **First run**: the queue is empty, so it seeds itself from
+   `scripts/seed-sites.ts` (your original 15 sites still work as the
+   starting point — nothing about them changes).
+2. **Every crawl looks for more, for free**: while a page is open anyway,
+   `extractRenderedTree()` (`src/services/crawler/extract.ts`) also
+   collects its outbound `<a href>` links (never fed into matching — see
+   the comment there), and for a site's homepage, its `/sitemap.xml` is
+   checked for more of *that same site's* pages. Both get queued as
+   `pending` for a **future** run — this run never crawls something it
+   just discovered.
+3. **Filtering before anything gets queued**
+   (`src/services/discovery/`): `blocklist.ts` skips domains that aren't
+   useful for layout discovery (social platforms, ad/tracking
+   infrastructure, login-walled apps); `normalize-url.ts` dedupes so the
+   same page never gets queued twice.
+4. **Politeness by construction, not just convention**: a 2-second pause
+   between every crawl, and `takeBatch()` round-robins across domains
+   (see `src/services/discovery/store/json-store.ts`) so a batch can't
+   fill up with 10 pages from one site. The batch size is small by
+   default on purpose — grow it once you've watched a few runs and trust
+   what it's finding.
+5. **Run it again later** (by hand, or on a schedule — cron, a scheduled
+   GitHub Action, whatever you already have) to keep pulling from the
+   queue and keep discovering further outward. 15 → hundreds → thousands
+   happens gradually across many runs, never all at once.
+
+This uses only free mechanisms — link-following and sitemaps. No search
+API, no paid discovery service. If a future version wants a more
+directed discovery source (e.g. a paid search API to fill in structural
+gaps in the index), that's a separate, explicit decision — never enabled
+by default, and never without asking first.
+
+Everything downstream is unchanged: discovered pages go through the
+exact same `analyzePage()`, the exact same section detection, the exact
+same store, the exact same search. Discovery only decides *which URL*
+gets crawled next — never how.
+
 ## Project structure
 
 ```
@@ -151,13 +202,18 @@ src/
                                screenshot, robots/url-safety, store (JSON + Postgres)
     matcher/                  structural/geometry/spacing/visual/other scoring,
                                two-stage rank (signature pre-filter → detailed score)
+    discovery/                Automatic URL discovery: blocklist, URL dedup,
+                               sitemap fetch, queue store (JSON + Postgres)
 scripts/
   seed-sites.ts                Curated real URLs to crawl
-  crawl.ts                      Runs the crawler against them
+  crawl.ts                      Crawls exactly that fixed list
+  discover-and-crawl.ts          Grows the index itself — see "Automatic
+                                 website discovery" below
   migrate.ts                    Applies db/migrations/*.sql
   smoke-test-crawler.ts         Dev-only: proves the crawler pipeline works,
                                  against local fixtures, never against the real index
-db/migrations/0001_init.sql      Postgres + pgvector schema
+db/migrations/                   0001 core schema, 0002-0004 navigation/
+                                 versioning fields, 0005 discovery queue
 ```
 
 ## The layout schema

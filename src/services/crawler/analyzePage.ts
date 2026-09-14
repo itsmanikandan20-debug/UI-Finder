@@ -37,6 +37,8 @@ export interface AnalyzePageResult {
   website: WebsiteRecord;
   sections: ExtractedSection[];
   warnings: string[];
+  /** Distinct outbound http(s) links found on the page — for the discovery worker to follow, never used in matching. */
+  links: string[];
 }
 
 export async function analyzePage(url: string, options: AnalyzePageOptions = {}): Promise<AnalyzePageResult> {
@@ -75,7 +77,7 @@ export async function analyzePage(url: string, options: AnalyzePageOptions = {})
 
     const finalUrl = page.url();
     const pageTitle = await page.title().catch(() => undefined);
-    const { root: rawRoot, documentHeight } = await extractRenderedTree(page);
+    const { root: rawRoot, documentHeight, links } = await extractRenderedTree(page);
     const candidates = detectSectionCandidates(rawRoot, viewportWidth).slice(0, maxSections);
     if (candidates.length === 0) {
       warnings.push("No distinct sections could be detected on this page.");
@@ -134,7 +136,7 @@ export async function analyzePage(url: string, options: AnalyzePageOptions = {})
       }
     }
 
-    return { url, finalUrl, viewportWidth, website, sections, warnings };
+    return { url, finalUrl, viewportWidth, website, sections, warnings, links };
   } finally {
     await browser.close();
   }

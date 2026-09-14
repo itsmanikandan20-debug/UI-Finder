@@ -118,9 +118,27 @@ function extractScript(maxDepth: number, maxBreadth: number): string {
         };
       }
 
+      // Outbound links, for the discovery worker (src/services/discovery)
+      // to follow — completely separate from the structural walk above,
+      // never fed into section detection or matching. anchor.href (as
+      // opposed to getAttribute) is already browser-resolved to an
+      // absolute URL, so relative links come out usable as-is.
+      var anchors = document.querySelectorAll("a[href]");
+      var linkSet = {};
+      var links = [];
+      for (var j = 0; j < anchors.length; j++) {
+        var href = anchors[j].href;
+        if (href.indexOf("http:") !== 0 && href.indexOf("https:") !== 0) continue;
+        if (linkSet[href]) continue;
+        linkSet[href] = true;
+        links.push(href);
+        if (links.length >= 60) break;
+      }
+
       return {
         root: walk(document.body, 0),
-        documentHeight: document.documentElement.scrollHeight
+        documentHeight: document.documentElement.scrollHeight,
+        links: links
       };
     })()
   `;
@@ -130,6 +148,8 @@ export interface ExtractedTree {
   root: RawDomNode | null;
   /** Full page scroll height, used only to compute "~N% down the page" for navigation. */
   documentHeight: number;
+  /** Distinct outbound http(s) links found on the page, for discovery — see src/services/discovery. */
+  links: string[];
 }
 
 export async function extractRenderedTree(page: Page): Promise<ExtractedTree> {

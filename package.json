@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "crawl": "tsx scripts/crawl.ts",
+    "discover": "tsx scripts/discover-and-crawl.ts",
     "db:migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
