@@ -27,7 +27,7 @@ import { analyzePage } from "@/services/crawler/analyzePage";
 import { createSectionStore } from "@/services/crawler/store";
 import { createDiscoveryQueueStore } from "@/services/discovery/store";
 import { fetchSitemapUrls } from "@/services/discovery/sitemap";
-import { fetchRandomCompanyHomepages } from "@/services/discovery/dbpedia";
+import { fetchCompanyDirectoryBatch } from "@/services/discovery/dbpedia";
 import { seedQueueIfEmpty, enqueueDiscovered } from "@/services/discovery/queue-helpers";
 import { SEED_SITES } from "./seed-sites";
 
@@ -55,12 +55,15 @@ async function main() {
   if (seeded > 0) console.log(`Discovery queue was empty — seeded ${seeded} URL(s) from scripts/seed-sites.ts.\n`);
 
   process.stdout.write("Checking DBpedia for new company websites... ");
-  const directoryCandidates = await fetchRandomCompanyHomepages(DIRECTORY_BATCH_SIZE);
+  const { homepages: directoryCandidates, diagnostic } = await fetchCompanyDirectoryBatch(DIRECTORY_BATCH_SIZE);
   const fromDirectory = await enqueueDiscovered(queue, directoryCandidates, SPARQL_ENDPOINT_LABEL, "directory");
   if (directoryCandidates.length === 0) {
-    console.log("none found (endpoint unreachable or empty response — not fatal, continuing).");
+    console.log(`none found (${diagnostic} — not fatal, continuing).`);
   } else {
-    console.log(`queued ${fromDirectory} new compan${fromDirectory === 1 ? "y" : "ies"} (${directoryCandidates.length - fromDirectory} already known).`);
+    console.log(
+      `${diagnostic}, queued ${fromDirectory} new compan${fromDirectory === 1 ? "y" : "ies"} ` +
+        `(${directoryCandidates.length - fromDirectory} already known).`
+    );
   }
   console.log();
 
