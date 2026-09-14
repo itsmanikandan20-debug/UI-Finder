@@ -147,7 +147,7 @@ describe("understandWireframe", () => {
     expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
   });
 
-  it("reports the last model's diagnostic when every candidate model 404s", async () => {
+  it("reports the last model's diagnostic when every candidate AND the discovered model list 404", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ ok: false, status: 404, json: async () => ({ error: { message: "model not found" } }) } as Response))
@@ -155,6 +155,46 @@ describe("understandWireframe", () => {
     const result = await understandWireframe(makeWireframe());
     expect(result.understanding).toBeNull();
     expect(result.diagnostic).toContain("model not found");
+  });
+
+  it("when every hardcoded candidate 404s, asks Gemini's ListModels for a real one and succeeds with it", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes(":generateContent")) {
+        if (url.includes("gemini-2.5-flash")) {
+          return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: VALID_JSON }] } }] }) } as Response;
+        }
+        return { ok: false, status: 404, json: async () => ({ error: { message: "model not found" } }) } as Response;
+      }
+      // ListModels
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          models: [
+            { name: "models/gemini-pro", supportedGenerationMethods: ["countTokens"] },
+            { name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] },
+          ],
+        }),
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await understandWireframe(makeWireframe());
+    expect(result.understanding).not.toBeNull();
+    expect(result.diagnostic).toBe("ok");
+    expect(fetchMock.mock.calls.some(([url]) => (url as string).includes("gemini-2.5-flash"))).toBe(true);
+  });
+
+  it("reports a clear diagnostic when ListModels has no generateContent-capable model", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes(":generateContent")) {
+        return { ok: false, status: 404, json: async () => ({ error: { message: "model not found" } }) } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ models: [{ name: "models/gemini-pro", supportedGenerationMethods: ["countTokens"] }] }) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await understandWireframe(makeWireframe());
+    expect(result.understanding).toBeNull();
+    expect(result.diagnostic).toContain("no model available that supports generateContent");
   });
 
   it("reports a network error when the request throws", async () => {

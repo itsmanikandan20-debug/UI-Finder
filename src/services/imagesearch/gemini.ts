@@ -71,6 +71,54 @@ interface GeminiErrorBody {
   error?: { message?: string };
 }
 
+interface GeminiModelsListResponse {
+  models?: { name?: string; supportedGenerationMethods?: string[] }[];
+}
+
+/**
+ * Last resort when every hardcoded candidate 404s: ask Google directly
+ * which models this specific key can actually use, rather than guessing
+ * more names. Prefers a "flash" model (fast/cheap) if more than one
+ * qualifies.
+ */
+async function discoverAvailableModel(apiKey: string): Promise<{ model: string | null; diagnostic: string }> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
+  let res: Response;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      res = await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { model: null, diagnostic: `network error listing Gemini models: ${message}` };
+  }
+
+  if (!res.ok) {
+    return { model: null, diagnostic: `Gemini ListModels responded with HTTP ${res.status}` };
+  }
+
+  let data: GeminiModelsListResponse;
+  try {
+    data = (await res.json()) as GeminiModelsListResponse;
+  } catch {
+    return { model: null, diagnostic: "Gemini ListModels response was not valid JSON" };
+  }
+
+  const usable = (data.models ?? []).filter(
+    (m): m is { name: string; supportedGenerationMethods?: string[] } =>
+      typeof m.name === "string" && Boolean(m.supportedGenerationMethods?.includes("generateContent"))
+  );
+  const chosen = usable.find((m) => m.name.includes("flash")) ?? usable[0];
+  if (!chosen) {
+    return { model: null, diagnostic: "This API key has no model available that supports generateContent" };
+  }
+  return { model: chosen.name.replace(/^models\//, ""), diagnostic: "ok" };
+}
+
 interface GeminiAttempt {
   understanding: WireframeUnderstanding | null;
   diagnostic: string;
@@ -174,5 +222,11 @@ export async function understandWireframe(wireframe: Wireframe): Promise<GeminiU
     return { understanding: attempt.understanding, diagnostic: attempt.diagnostic };
   }
 
-  return { understanding: null, diagnostic: lastDiagnostic };
+  // Every hardcoded guess 404'd — ask Google what this key can actually use.
+  const discovered = await discoverAvailableModel(apiKey);
+  if (!discovered.model) {
+    return { understanding: null, diagnostic: `${lastDiagnostic} (then: ${discovered.diagnostic})` };
+  }
+  const finalAttempt = await callGemini(discovered.model, prompt, apiKey);
+  return { understanding: finalAttempt.understanding, diagnostic: finalAttempt.diagnostic };
 }
