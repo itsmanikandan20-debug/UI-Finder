@@ -17,7 +17,7 @@
 // A string is evaluated by the browser's own JS engine untouched by any
 // bundler, sidestepping the problem entirely.
 
-import type { Page } from "playwright";
+import type { Page } from "playwright-core";
 
 export interface RawDomNode {
   tag: string;

@@ -76,6 +76,14 @@ click **Find Matches**. With no further setup, you'll see an honest
 empty-state message instead of fake results — see "About the seed data"
 below for why, and how to fix it in about a minute.
 
+No browser download step is needed: the crawler (`npm run crawl`, used
+below) automatically uses whatever Google Chrome or Microsoft Edge is
+already installed on your machine, via `playwright-core` + Playwright's
+`channel` option — never Playwright's own downloaded Chromium build. If
+neither is found, it fails with a clear message telling you what to
+install (or how to point it at a browser via `CHROMIUM_EXECUTABLE_PATH`
+in `.env.local`) instead of trying to download one itself.
+
 ## About the seed data (read this before judging results)
 
 `data/sections.seed.json` — the index the app reads with zero setup —
