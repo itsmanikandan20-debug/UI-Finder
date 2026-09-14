@@ -46,7 +46,7 @@ function sanitizeForPrompt(node: LayoutNode): Omit<LayoutNode, "id" | "children"
 
 function buildPrompt(wireframe: Wireframe): string {
   const sections = getMatchableSections(wireframe).map(sanitizeForPrompt);
-  return `You are looking at the GEOMETRY of a rough UI wireframe sketch — box positions and sizes only (0-1 ratios within their parent), never an actual image or real text/colors. Each section is a JSON tree of boxes; "kind" is one of root/section/row/column/repeated_group/box (a plain box carries no type — the designer never labeled it), "repeat" marks a repeated set of items, and x/y/width/height are 0-1 ratios.
+  return `You are looking at the GEOMETRY of a rough wireframe sketch for ONE SECTION OF A PUBLIC MARKETING/CONTENT WEBSITE PAGE (e.g. a landing page, product page, or content site) — box positions and sizes only (0-1 ratios within their parent), never an actual image or real text/colors. This is explicitly NOT an admin dashboard, analytics panel, or software app screen — do not describe or search for one, even if the shapes could resemble one. Each section is a JSON tree of boxes; "kind" is one of root/section/row/column/repeated_group/box (a plain box carries no type — the designer never labeled it), "repeat" marks a repeated set of items, and x/y/width/height are 0-1 ratios.
 
 Wireframe section(s):
 ${JSON.stringify(sections)}
@@ -59,9 +59,9 @@ Based ONLY on this geometry, respond with STRICT JSON, no markdown, no commentar
     "3-5 bullets total covering the layout's distinct regions",
     "one final bullet starting with 'Overall:' giving a short label for the whole pattern, e.g. \\"Overall: two-column feature/content layout\\""
   ],
-  "searchQuery": "a short, effective web search phrase (5-12 words) for finding real UI design examples matching this layout, ending with words like \\"UI design\\" or \\"website design\\""
+  "searchQuery": "a short, effective web search phrase (5-12 words) for finding real WEBSITE PAGE SECTION examples matching this layout — end with words like \\"website section design\\" or \\"landing page UI design\\"; never use the word \\"dashboard\\" or describe data tables/charts/admin panels"
 }
-Each summary bullet is one short plain sentence or fragment — no markdown, no numbering, no node ids or ratios.`;
+Each summary bullet is one short plain sentence or fragment — no markdown, no numbering, no node ids or ratios, and no mention of dashboards/admin panels/software app screens.`;
 }
 
 interface GeminiApiResponse {

@@ -115,6 +115,23 @@ describe("understandWireframe", () => {
     expect(promptText).not.toContain("section-1");
   });
 
+  it("explicitly steers the prompt away from dashboard/admin-panel framing", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: VALID_JSON }] } }] }),
+    } as Response));
+    vi.stubGlobal("fetch", fetchMock);
+    await understandWireframe(makeWireframe());
+
+    const [, init] = fetchMock.mock.calls[0];
+    const sentBody = JSON.parse((init as RequestInit).body as string);
+    const promptText = sentBody.contents[0].parts[0].text as string;
+    expect(promptText).toContain("NOT an admin dashboard");
+    expect(promptText.toLowerCase()).toContain("never use the word");
+    expect(promptText.toLowerCase()).toContain("dashboard");
+  });
+
   it("reports the HTTP status when Gemini responds with a non-OK status, without trying another model", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: false,
