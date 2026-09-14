@@ -17,6 +17,8 @@ export interface SearchMatch {
   hasPreciseAnchor: boolean;
   /** Shown when hasPreciseAnchor is false, e.g. "≈34% down the page". */
   approxPagePosition?: string;
+  /** The section's original box on the crawled page (CSS px at viewportWidth) — the exact region the screenshot/score came from. */
+  boundingBox?: { x: number; y: number; width: number; height: number };
 }
 
 export interface SectionSearchResult {

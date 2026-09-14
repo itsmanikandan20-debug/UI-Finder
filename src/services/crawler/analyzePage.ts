@@ -101,6 +101,7 @@ export async function analyzePage(url: string, options: AnalyzePageOptions = {})
         // this section sits, for when no such link is possible.
         anchorSnippet: raw.snippetText || undefined,
         pageYRatio: documentHeight > 0 ? Math.min(1, Math.max(0, raw.y / documentHeight)) : undefined,
+        pageBox: { x: raw.x, y: raw.y, width: raw.width, height: raw.height },
         crawledAt: new Date().toISOString(),
       });
     }

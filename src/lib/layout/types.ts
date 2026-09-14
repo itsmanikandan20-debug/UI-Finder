@@ -119,6 +119,14 @@ export interface ExtractedSection {
   anchorSnippet?: string;
   /** How far down the full page this section sits (0 = top, 1 = bottom). Navigation-only. */
   pageYRatio?: number;
+  /**
+   * The section's original absolute box on the crawled page, in CSS
+   * pixels at `viewportWidth` — the exact region the screenshot was
+   * cropped from and the LayoutNode was built from. Not used in scoring
+   * (matching only ever sees the normalized 0..1 `root`); exposed so a
+   * result can point at precisely where on the page it came from.
+   */
+  pageBox?: { x: number; y: number; width: number; height: number };
   crawledAt: string;
 }
 

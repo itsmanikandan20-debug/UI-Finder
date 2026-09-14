@@ -34,13 +34,14 @@ export class PostgresSectionStore implements SectionStore {
     await this.sql`
       insert into sections (
         id, website_id, page_url, domain, website_title, section_index, dom_selector, viewport_width,
-        structure_json, layout_embedding, screenshot_ref, anchor_snippet, page_y_ratio, crawled_at
+        structure_json, layout_embedding, screenshot_ref, anchor_snippet, page_y_ratio, page_box, crawled_at
       ) values (
         ${section.id}, ${section.websiteId}, ${section.pageUrl}, ${section.domain}, ${section.websiteTitle ?? null},
         ${section.sectionIndex}, ${section.domSelector}, ${section.viewportWidth},
         ${this.sql.json(section.root as never)},
         ${vecLiteral}::vector(${SIGNATURE_LENGTH}),
         ${section.screenshotRef ?? null}, ${section.anchorSnippet ?? null}, ${section.pageYRatio ?? null},
+        ${section.pageBox ? this.sql.json(section.pageBox as never) : null},
         ${section.crawledAt}
       )
       on conflict (id) do update set
@@ -51,6 +52,7 @@ export class PostgresSectionStore implements SectionStore {
         screenshot_ref = excluded.screenshot_ref,
         anchor_snippet = excluded.anchor_snippet,
         page_y_ratio = excluded.page_y_ratio,
+        page_box = excluded.page_box,
         crawled_at = excluded.crawled_at
     `;
   }
@@ -70,11 +72,12 @@ export class PostgresSectionStore implements SectionStore {
         screenshot_ref: string | null;
         anchor_snippet: string | null;
         page_y_ratio: number | null;
+        page_box: { x: number; y: number; width: number; height: number } | null;
         crawled_at: string;
       }[]
     >`
       select id, website_id, page_url, domain, website_title, section_index, dom_selector, viewport_width,
-             structure_json, screenshot_ref, anchor_snippet, page_y_ratio, crawled_at
+             structure_json, screenshot_ref, anchor_snippet, page_y_ratio, page_box, crawled_at
       from sections
       limit 5000
     `;
@@ -91,6 +94,7 @@ export class PostgresSectionStore implements SectionStore {
       screenshotRef: r.screenshot_ref ?? undefined,
       anchorSnippet: r.anchor_snippet ?? undefined,
       pageYRatio: r.page_y_ratio ?? undefined,
+      pageBox: r.page_box ?? undefined,
       crawledAt: r.crawled_at,
     }));
   }

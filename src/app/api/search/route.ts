@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
           openUrl: anchor.openUrl,
           hasPreciseAnchor: anchor.hasPreciseAnchor,
           approxPagePosition: anchor.approxPagePosition,
+          boundingBox: r.section.pageBox,
         };
       }),
     };
