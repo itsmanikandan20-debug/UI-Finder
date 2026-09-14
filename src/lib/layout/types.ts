@@ -64,13 +64,18 @@ export interface Wireframe {
 // converted into the normalized LayoutNode tree by normalize.ts before it
 // is ever sent to the matcher — the matcher never sees raw pixels.
 //
-// The designer draws freely (no Section/Row/Heading/Image type picker) —
-// an EditorElement is just a shape's bounding box. normalize.ts infers
-// structure (section/row/column vs. a plain leaf) from geometry alone:
-// containment for nesting, position/size for grouping and repetition.
+// The designer can either pick a type from the toolbar (Section/Row/
+// Column/Heading/Text/Image/Button/Box) or draw a shape free-hand with no
+// type at all — both are supported side by side. `kind` is set only for
+// the former; normalize.ts infers structure (section/row/column vs. a
+// plain leaf) from geometry alone whenever it's absent.
+
+export type EditorElementKind = "section" | "row" | "column" | "heading" | "text" | "image" | "button" | "box";
 
 export interface EditorElement {
   id: string;
+  /** Set only for a shape explicitly typed via the toolbar; absent for a free-hand drawn shape. */
+  kind?: EditorElementKind;
   x: number;
   y: number;
   width: number;

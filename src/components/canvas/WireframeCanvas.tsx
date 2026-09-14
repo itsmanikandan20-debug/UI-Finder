@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { Stage, Layer, Line, Transformer } from "react-konva";
+import { Fragment, useEffect, useRef } from "react";
+import { Stage, Layer, Line, Rect, Text, Transformer } from "react-konva";
 import type Konva from "konva";
 import type { KonvaEventObject } from "konva/lib/Node";
-import type { CanvasElement } from "@/features/wireframe-editor/types";
+import { ELEMENT_DEFAULTS, type CanvasElement } from "@/features/wireframe-editor/types";
 
 const MAX_DISPLAY_WIDTH = 1040;
 const STROKE_COLOR = "#3568E0";
@@ -42,7 +42,7 @@ export function WireframeCanvas({
   onEndStroke,
 }: Props) {
   const trRef = useRef<Konva.Transformer>(null);
-  const shapeRefs = useRef<Record<string, Konva.Line>>({});
+  const shapeRefs = useRef<Record<string, Konva.Shape>>({});
   const isDrawing = useRef(false);
 
   useEffect(() => {
@@ -104,15 +104,62 @@ export function WireframeCanvas({
           />
           {elements.map((el) => {
             const isSelected = selectedId === el.id;
+            const setRef = (node: Konva.Shape | null) => {
+              if (node) shapeRefs.current[el.id] = node;
+              else delete shapeRefs.current[el.id];
+            };
+
+            if (el.variant === "typed") {
+              const style = ELEMENT_DEFAULTS[el.kind];
+              return (
+                <Fragment key={el.id}>
+                  <Rect
+                    ref={setRef}
+                    x={el.x}
+                    y={el.y}
+                    width={el.width}
+                    height={el.height}
+                    fill={style.fill}
+                    stroke={isSelected ? SELECTED_COLOR : style.stroke}
+                    strokeWidth={isSelected ? 2 : 1}
+                    dash={style.dashed ? [6, 4] : undefined}
+                    cornerRadius={el.kind === "button" ? 8 : 4}
+                    draggable
+                    onClick={() => onSelect(el.id)}
+                    onTap={() => onSelect(el.id)}
+                    onDragEnd={(e) => onChange(el.id, { x: e.target.x(), y: e.target.y() })}
+                    onTransformEnd={(e) => {
+                      const node = e.target;
+                      const scaleX = node.scaleX();
+                      const scaleY = node.scaleY();
+                      node.scaleX(1);
+                      node.scaleY(1);
+                      onChange(el.id, {
+                        x: node.x(),
+                        y: node.y(),
+                        width: Math.max(20, Math.round(node.width() * scaleX)),
+                        height: Math.max(20, Math.round(node.height() * scaleY)),
+                      });
+                    }}
+                  />
+                  <Text
+                    x={el.x + 8}
+                    y={el.y + 6}
+                    text={style.label}
+                    fontSize={12}
+                    fill={el.kind === "button" ? "#ffffff" : "#7A7788"}
+                    listening={false}
+                  />
+                </Fragment>
+              );
+            }
+
             const scaleX = el.baseWidth > 0 ? el.width / el.baseWidth : 1;
             const scaleY = el.baseHeight > 0 ? el.height / el.baseHeight : 1;
             return (
               <Line
                 key={el.id}
-                ref={(node) => {
-                  if (node) shapeRefs.current[el.id] = node;
-                  else delete shapeRefs.current[el.id];
-                }}
+                ref={setRef}
                 points={el.points}
                 x={el.x}
                 y={el.y}

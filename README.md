@@ -27,13 +27,16 @@ spec — see "What's not built yet" below.
 
 ```
 Wireframe editor (React Konva)
-        │  free-hand drawing — no Section/Row/Heading/Image type picker;
-        │  a shape containing others nests automatically, repeated
+        │  two ways to add a shape, side by side: pick a type from the
+        │  toolbar (Section/Row/Column/Heading/Text/Image/Button/Box), or
+        │  draw free-hand with no type at all — either way, a shape
+        │  containing others nests automatically, and repeated
         │  similarly-sized shapes group automatically
         ▼
 normalizeWireframe()            src/lib/layout/normalize.ts
-        │  → LayoutNode tree, 0..1 ratios; structure (section/row/column
-        │  vs. plain leaf) inferred from geometry, not from a type tag
+        │  → LayoutNode tree, 0..1 ratios; a typed shape's kind is used as
+        │  authored, an untyped free-hand shape's structure (section/row/
+        │  column vs. plain leaf) is inferred from geometry instead
         ▼
 POST /api/search                src/app/api/search/route.ts
         │
@@ -266,20 +269,23 @@ interface LayoutNode {
 Absolute pixels are thrown away immediately — a 1200px-wide section and a
 1440px-wide section with the same proportions read as the same shape.
 Repeated elements (a row of cards) are auto-detected — 3+ siblings of
-near-identical size (from real DOM element types on the crawler side;
-purely by size for the editor's free-hand shapes, which carry no type at
-all) — and wrapped in a `repeated_group` node so "4 repeated cards" is a
-first-class, directly comparable fact rather than 4 separate coincidences.
+near-identical size (real DOM element types on the crawler side; an
+explicit type from the toolbar, or a size bucket for an untyped free-hand
+shape, on the editor side — typed and free-hand siblings never
+cross-group with each other, even at a matching size) — and wrapped in a
+`repeated_group` node so "4 repeated cards" is a first-class, directly
+comparable fact rather than 4 separate coincidences.
 
-The designer never tags what a shape represents (no Section/Row/Heading/
-Image picker) — every stroke is just a bounding box. `normalize.ts`
-infers structure from geometry alone: a shape containing others becomes a
-`section` (if top-level — these are what the matcher compares against)
-or a `row`/`column` (if nested, direction inferred from how its children
-are arranged); a shape with nothing inside it is a plain `box` leaf. This
-means the wireframe side of a match never claims `hasImage`/`hasText` —
-only a real crawled page's actual DOM elements do — an honest tradeoff
-for not requiring the designer to label anything.
+The designer can either pick a type from the toolbar (Section/Row/Column/
+Heading/Text/Image/Button/Box) or draw a shape free-hand with no type at
+all — both work side by side. A typed shape's `kind` is used exactly as
+authored (including its `hasImage`/`hasText` meta). For an untyped
+free-hand shape, `normalize.ts` infers structure from geometry alone: a
+shape containing others becomes a `section` (if top-level — these are
+what the matcher compares against) or a `row`/`column` (if nested,
+direction inferred from how its children are arranged); a shape with
+nothing inside it is a plain `box` leaf with no `hasImage`/`hasText`
+claim — an honest tradeoff for not requiring that shape to be labeled.
 
 ## Matching
 

@@ -120,6 +120,7 @@ export default function HomePage() {
       <Toolbar
         viewportLabel={editor.viewportLabel}
         onViewportChange={editor.setViewportLabel}
+        onAdd={editor.addElement}
         onDuplicate={editor.duplicateSelected}
         onDelete={editor.deleteSelected}
         onClear={editor.clearAll}
@@ -144,9 +145,9 @@ export default function HomePage() {
       </div>
 
       <p className="mt-2 text-xs text-ink-muted">
-        Tip: draw a big shape first, then smaller ones inside it to group them together —
-        a shape containing others becomes one section; draw a few similarly-sized shapes in
-        a row to sketch a repeated card list, no manual grouping needed.
+        Tip: draw a big shape first (or drop a Section), then smaller ones inside it to group
+        them together — a shape containing others becomes one section; a few similarly-sized
+        shapes in a row auto-group as a repeated card list, no manual grouping needed.
       </p>
 
       {error && (

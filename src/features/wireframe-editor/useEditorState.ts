@@ -2,8 +2,8 @@
 
 import { useCallback, useState } from "react";
 import { randomId } from "@/lib/id";
-import type { EditorDocument, ViewportLabel } from "@/lib/layout/types";
-import type { CanvasElement } from "./types";
+import type { EditorDocument, EditorElementKind, ViewportLabel } from "@/lib/layout/types";
+import { ELEMENT_DEFAULTS, type CanvasElement } from "./types";
 
 const ARTBOARD_WIDTH: Record<ViewportLabel, number> = {
   desktop: 1440,
@@ -74,6 +74,29 @@ export function useEditorState() {
     setElementsRaw((prev) => computeParents(updater(prev)));
   }, []);
 
+  const addElement = useCallback(
+    (kind: EditorElementKind) => {
+      const defaults = ELEMENT_DEFAULTS[kind];
+      const id = randomId();
+      const width = Math.min(defaults.width, artboardWidth - 40);
+      applyUpdate((prev) => [
+        ...prev,
+        {
+          id,
+          variant: "typed",
+          kind,
+          x: Math.max(20, Math.round((artboardWidth - width) / 2)),
+          y: 30 + (prev.length % 6) * 30,
+          width,
+          height: defaults.height,
+          parentId: null,
+        },
+      ]);
+      setSelectedId(id);
+    },
+    [applyUpdate, artboardWidth]
+  );
+
   const startStroke = useCallback((x: number, y: number) => {
     setSelectedId(null);
     setDraftPoints([x, y]);
@@ -103,6 +126,7 @@ export function useEditorState() {
         ...els,
         {
           id,
+          variant: "stroke",
           points: relativePoints,
           x: box.x,
           y: box.y,
@@ -165,7 +189,7 @@ export function useEditorState() {
       artboardWidth,
       artboardHeight,
       viewportLabel,
-      elements: elements.map(({ id, x, y, width, height, parentId, groupId }) => ({
+      elements: elements.map(({ id, x, y, width, height, parentId, groupId, ...rest }) => ({
         id,
         x,
         y,
@@ -173,6 +197,7 @@ export function useEditorState() {
         height,
         parentId,
         groupId,
+        ...(rest.variant === "typed" ? { kind: rest.kind } : {}),
       })),
     };
   }, [elements, artboardWidth, artboardHeight, viewportLabel]);
@@ -186,6 +211,7 @@ export function useEditorState() {
     selectedId,
     setSelectedId,
     draftPoints,
+    addElement,
     startStroke,
     extendStroke,
     endStroke,

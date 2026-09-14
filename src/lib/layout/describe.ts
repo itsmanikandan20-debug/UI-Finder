@@ -8,11 +8,23 @@ import { isHorizontalSequence } from "./geometry";
 import { getMatchableSections } from "./normalize";
 import type { LayoutNode, Wireframe } from "./types";
 
-// Leaves are always a plain, untyped shape now — the designer never tags
-// what a box is meant to represent, so the wording stays honest about
-// that rather than guessing "heading" or "image" from geometry alone.
-function describeLeaf(): string {
-  return "a drawn shape";
+// A leaf explicitly typed via the toolbar (heading/text/image/button) is
+// described by that real type; a plain "box" — whether that's an explicit
+// Box shape or an untyped free-hand drawing, indistinguishable by this
+// point — reads as a generic drawn shape rather than a guess.
+function describeLeaf(node: LayoutNode): string {
+  switch (node.kind) {
+    case "heading":
+      return "a heading";
+    case "text":
+      return "a text block";
+    case "image":
+      return "an image";
+    case "button":
+      return "a button";
+    default:
+      return "a drawn shape";
+  }
 }
 
 function describeChild(node: LayoutNode): string {
@@ -27,7 +39,7 @@ function describeChild(node: LayoutNode): string {
     return "a column of stacked items";
   }
   if (node.children.length === 0) {
-    return describeLeaf();
+    return describeLeaf(node);
   }
   return "a group of elements";
 }
