@@ -147,34 +147,58 @@ without you maintaining a list:**
 1. **First run**: the queue is empty, so it seeds itself from
    `scripts/seed-sites.ts` (your original 15 sites still work as the
    starting point — nothing about them changes).
-2. **Every crawl looks for more, for free**: while a page is open anyway,
-   `extractRenderedTree()` (`src/services/crawler/extract.ts`) also
-   collects its outbound `<a href>` links (never fed into matching — see
-   the comment there), and for a site's homepage, its `/sitemap.xml` is
-   checked for more of *that same site's* pages. Both get queued as
-   `pending` for a **future** run — this run never crawls something it
-   just discovered.
-3. **Filtering before anything gets queued**
+2. **Every run asks DBpedia for a batch of genuinely new, unrelated
+   companies** (`src/services/discovery/dbpedia.ts`) — this is the
+   deliberate "find companies we've never heard of" source, separate
+   from anything already in the index. DBpedia is a free, public,
+   no-signup service that extracts structured facts from Wikipedia
+   infoboxes; any Wikipedia page for a company typically lists its
+   official homepage, and DBpedia exposes that as `dbo:homepage` via a
+   public SPARQL endpoint (`https://dbpedia.org/sparql`) — one plain
+   HTTP GET, no API key. A random offset into DBpedia's company list is
+   picked each run for variety, so repeated runs surface different
+   companies rather than the same handful. If the endpoint is slow or
+   unreachable, this fails open (an empty result) and the rest of the
+   run continues normally.
+3. **Every crawl also looks for more, for free, from what it just saw**:
+   while a page is open anyway, `extractRenderedTree()`
+   (`src/services/crawler/extract.ts`) collects its outbound `<a href>`
+   links — same-domain or a completely different domain, whatever the
+   page actually links to (never fed into matching — see the comment
+   there) — and for a site's homepage, its `/sitemap.xml` is checked for
+   more of *that same site's* pages. This is opportunistic (it depends
+   on what the page happens to link to), unlike DBpedia's deliberate
+   sourcing, but it's genuinely free and catches things DBpedia
+   wouldn't — a footer "customers" or "built with" page, for instance.
+   All of it gets queued as `pending` for a **future** run — this run
+   never crawls something it just discovered.
+4. **Filtering before anything gets queued**
    (`src/services/discovery/`): `blocklist.ts` skips domains that aren't
    useful for layout discovery (social platforms, ad/tracking
    infrastructure, login-walled apps); `normalize-url.ts` dedupes so the
-   same page never gets queued twice.
-4. **Politeness by construction, not just convention**: a 2-second pause
+   same page never gets queued twice, from any source.
+5. **Politeness by construction, not just convention**: a 2-second pause
    between every crawl, and `takeBatch()` round-robins across domains
    (see `src/services/discovery/store/json-store.ts`) so a batch can't
    fill up with 10 pages from one site. The batch size is small by
    default on purpose — grow it once you've watched a few runs and trust
    what it's finding.
-5. **Run it again later** (by hand, or on a schedule — cron, a scheduled
+6. **Run it again later** (by hand, or on a schedule — cron, a scheduled
    GitHub Action, whatever you already have) to keep pulling from the
    queue and keep discovering further outward. 15 → hundreds → thousands
    happens gradually across many runs, never all at once.
 
-This uses only free mechanisms — link-following and sitemaps. No search
-API, no paid discovery service. If a future version wants a more
-directed discovery source (e.g. a paid search API to fill in structural
-gaps in the index), that's a separate, explicit decision — never enabled
-by default, and never without asking first.
+This uses only free mechanisms — DBpedia's public SPARQL endpoint,
+link-following, and sitemaps. No search API, no paid discovery service.
+If a future version wants a more directed paid discovery source, that's
+a separate, explicit decision — never enabled by default, and never
+without asking first.
+
+**Not yet verified against the live DBpedia endpoint** — this was built
+and tested in a sandboxed environment with no general outbound internet
+access (same limitation as the crawler itself), so `dbpedia.ts` is
+covered by unit tests against mocked responses, not a real run. Run
+`npm run discover` yourself to confirm it actually pulls real companies.
 
 Everything downstream is unchanged: discovered pages go through the
 exact same `analyzePage()`, the exact same section detection, the exact
@@ -202,8 +226,9 @@ src/
                                screenshot, robots/url-safety, store (JSON + Postgres)
     matcher/                  structural/geometry/spacing/visual/other scoring,
                                two-stage rank (signature pre-filter → detailed score)
-    discovery/                Automatic URL discovery: blocklist, URL dedup,
-                               sitemap fetch, queue store (JSON + Postgres)
+    discovery/                Automatic URL discovery: DBpedia company
+                               directory, blocklist, URL dedup, sitemap
+                               fetch, queue store (JSON + Postgres)
 scripts/
   seed-sites.ts                Curated real URLs to crawl
   crawl.ts                      Crawls exactly that fixed list
@@ -213,7 +238,8 @@ scripts/
   smoke-test-crawler.ts         Dev-only: proves the crawler pipeline works,
                                  against local fixtures, never against the real index
 db/migrations/                   0001 core schema, 0002-0004 navigation/
-                                 versioning fields, 0005 discovery queue
+                                 versioning fields, 0005 discovery queue,
+                                 0006 adds the "directory" discovery method
 ```
 
 ## The layout schema

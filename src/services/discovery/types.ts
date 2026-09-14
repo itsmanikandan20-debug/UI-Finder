@@ -1,4 +1,4 @@
-export type DiscoveryMethod = "seed" | "sitemap" | "link";
+export type DiscoveryMethod = "seed" | "sitemap" | "link" | "directory";
 export type DiscoveryStatus = "pending" | "crawled" | "failed" | "blocked" | "rejected";
 
 export interface DiscoveryQueueEntry {

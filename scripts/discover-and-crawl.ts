@@ -7,12 +7,19 @@
 // small" by design, not a fixed technical ceiling) — run it again
 // (e.g. on a schedule) to keep growing the index over time.
 //
+// It also asks DBpedia (a free, public, no-signup Wikipedia-derived
+// company directory — see src/services/discovery/dbpedia.ts) for a
+// batch of real companies' homepages each run. This is the one source
+// that finds genuinely new, UNRELATED companies on purpose, rather than
+// only whatever the already-indexed pages happen to link to.
+//
 // Usage:
 //   npm run discover                # small safe batch (default 8)
 //   npm run discover -- --batch 20  # a bigger batch, once you trust it
 //
-// Uses only free mechanisms: link-following and sitemap.xml — no paid
-// search/discovery API. See the architecture note in README.md.
+// Uses only free mechanisms: link-following, sitemap.xml, and DBpedia's
+// public SPARQL endpoint — no paid search/discovery API. See the
+// architecture note in README.md.
 
 import path from "node:path";
 import { promises as fs } from "node:fs";
@@ -20,11 +27,14 @@ import { analyzePage } from "@/services/crawler/analyzePage";
 import { createSectionStore } from "@/services/crawler/store";
 import { createDiscoveryQueueStore } from "@/services/discovery/store";
 import { fetchSitemapUrls } from "@/services/discovery/sitemap";
+import { fetchRandomCompanyHomepages } from "@/services/discovery/dbpedia";
 import { seedQueueIfEmpty, enqueueDiscovered } from "@/services/discovery/queue-helpers";
 import { SEED_SITES } from "./seed-sites";
 
 const SCREENSHOT_DIR = path.join(process.cwd(), "data", "screenshots");
 const DEFAULT_BATCH_SIZE = 8; // "start with a small safe batch" — grow this once you trust the results
+const DIRECTORY_BATCH_SIZE = 15; // how many candidate companies to ask DBpedia for per run
+const SPARQL_ENDPOINT_LABEL = "https://dbpedia.org/sparql";
 const POLITENESS_DELAY_MS = 2000; // pause between crawls, regardless of domain
 
 function parseArgs(): { batchSize: number } {
@@ -43,6 +53,16 @@ async function main() {
 
   const seeded = await seedQueueIfEmpty(queue, SEED_SITES);
   if (seeded > 0) console.log(`Discovery queue was empty — seeded ${seeded} URL(s) from scripts/seed-sites.ts.\n`);
+
+  process.stdout.write("Checking DBpedia for new company websites... ");
+  const directoryCandidates = await fetchRandomCompanyHomepages(DIRECTORY_BATCH_SIZE);
+  const fromDirectory = await enqueueDiscovered(queue, directoryCandidates, SPARQL_ENDPOINT_LABEL, "directory");
+  if (directoryCandidates.length === 0) {
+    console.log("none found (endpoint unreachable or empty response — not fatal, continuing).");
+  } else {
+    console.log(`queued ${fromDirectory} new compan${fromDirectory === 1 ? "y" : "ies"} (${directoryCandidates.length - fromDirectory} already known).`);
+  }
+  console.log();
 
   const batch = await queue.takeBatch(batchSize);
   if (batch.length === 0) {

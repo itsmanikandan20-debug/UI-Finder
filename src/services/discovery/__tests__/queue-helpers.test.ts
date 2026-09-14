@@ -79,4 +79,17 @@ describe("enqueueDiscovered", () => {
     const { total } = await store.size();
     expect(total).toBe(1);
   });
+
+  it("accepts the 'directory' discovery method (DBpedia source)", async () => {
+    const added = await enqueueDiscovered(
+      store,
+      ["https://random-real-company.example/"],
+      "https://dbpedia.org/sparql",
+      "directory"
+    );
+    expect(added).toBe(1);
+    const batch = await store.takeBatch(10);
+    expect(batch[0].discoveryMethod).toBe("directory");
+    expect(batch[0].discoveredFrom).toBe("https://dbpedia.org/sparql");
+  });
 });
