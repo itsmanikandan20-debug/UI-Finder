@@ -39,9 +39,8 @@ export interface ImageSearchRequestBody {
 }
 
 export interface WireframeUnderstanding {
-  detectedPattern: string;
-  structure: string;
-  layout: string;
+  /** Short bullet points describing what was drawn — the main container, then each notable region by position/count/arrangement, ending with one "Overall: ..." synthesis bullet. */
+  summary: string[];
   searchQuery: string;
 }
 

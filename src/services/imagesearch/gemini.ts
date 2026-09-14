@@ -22,9 +22,8 @@ const FETCH_TIMEOUT_MS = 15000;
 const MAX_MODEL_ATTEMPTS = 6;
 
 export interface WireframeUnderstanding {
-  detectedPattern: string;
-  structure: string;
-  layout: string;
+  /** Short bullet points describing what was drawn — the main container, then each notable region by position/count/arrangement, ending with one "Overall: ..." synthesis bullet. */
+  summary: string[];
   searchQuery: string;
 }
 
@@ -35,9 +34,7 @@ export interface GeminiUnderstandingResult {
 }
 
 const understandingSchema = z.object({
-  detectedPattern: z.string().min(1),
-  structure: z.string().min(1),
-  layout: z.string().min(1),
+  summary: z.array(z.string().min(1)).min(1),
   searchQuery: z.string().min(1),
 });
 
@@ -49,18 +46,22 @@ function sanitizeForPrompt(node: LayoutNode): Omit<LayoutNode, "id" | "children"
 
 function buildPrompt(wireframe: Wireframe): string {
   const sections = getMatchableSections(wireframe).map(sanitizeForPrompt);
-  return `You are looking at the GEOMETRY of a rough UI wireframe sketch — box positions and sizes only (0-1 ratios within their parent), never an actual image or real text/colors. Each section is a JSON tree of boxes; "kind" is one of root/section/row/column/repeated_group/heading/text/image/button/box, "repeat" marks a repeated set of items, and x/y/width/height are 0-1 ratios.
+  return `You are looking at the GEOMETRY of a rough UI wireframe sketch — box positions and sizes only (0-1 ratios within their parent), never an actual image or real text/colors. Each section is a JSON tree of boxes; "kind" is one of root/section/row/column/repeated_group/box (a plain box carries no type — the designer never labeled it), "repeat" marks a repeated set of items, and x/y/width/height are 0-1 ratios.
 
 Wireframe section(s):
 ${JSON.stringify(sections)}
 
 Based ONLY on this geometry, respond with STRICT JSON, no markdown, no commentary, matching exactly this shape:
 {
-  "detectedPattern": "short label for the overall UI pattern, e.g. \\"Feature section\\"",
-  "structure": "short plain-English description of the content, e.g. \\"4 feature items + large visual/content panel\\"",
-  "layout": "short description of the arrangement, e.g. \\"Left feature list -> Right visual\\"",
+  "summary": [
+    "one short bullet naming the main container/card",
+    "one short bullet per other notable region, by position (top/left/right/center) and, if repeated, its count and arrangement — e.g. \\"4 small items on the left, arranged 2 x 2\\" or \\"a wide element at the top\\"",
+    "3-5 bullets total covering the layout's distinct regions",
+    "one final bullet starting with 'Overall:' giving a short label for the whole pattern, e.g. \\"Overall: two-column feature/content layout\\""
+  ],
   "searchQuery": "a short, effective web search phrase (5-12 words) for finding real UI design examples matching this layout, ending with words like \\"UI design\\" or \\"website design\\""
-}`;
+}
+Each summary bullet is one short plain sentence or fragment — no markdown, no numbering, no node ids or ratios.`;
 }
 
 interface GeminiApiResponse {

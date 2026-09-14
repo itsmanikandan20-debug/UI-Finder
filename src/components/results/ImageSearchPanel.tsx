@@ -1,13 +1,31 @@
 "use client";
 
-import { ExternalLink, Globe, Loader2 } from "lucide-react";
-import type { ImageSearchApiResponse } from "@/lib/api-types";
+import { useState } from "react";
+import { ExternalLink, Globe, ImageIcon, Loader2 } from "lucide-react";
+import type { ImageSearchApiResponse, ImageSearchResultItem } from "@/lib/api-types";
 
 interface Props {
   status: "idle" | "loading" | "done" | "error";
   response?: ImageSearchApiResponse;
   error?: string;
   onSearch: () => void;
+}
+
+/** Shows the actual matched image (SerpApi's `original` — the real image on the source page), falling back to Google's cached thumbnail only if the original fails to load (some sites block hotlinking). */
+function ResultImage({ img }: { img: ImageSearchResultItem }) {
+  const [useThumbnail, setUseThumbnail] = useState(false);
+  const src = useThumbnail ? img.thumbnailUrl ?? img.imageUrl : img.imageUrl;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt="UI design reference found on the internet"
+      className="h-full w-full object-cover object-top"
+      onError={() => {
+        if (!useThumbnail && img.thumbnailUrl) setUseThumbnail(true);
+      }}
+    />
+  );
 }
 
 /**
@@ -49,17 +67,11 @@ export function ImageSearchPanel({ status, response, error, onSearch }: Props) {
       )}
 
       {status === "done" && response?.understanding && (
-        <div className="mt-3 space-y-1 rounded-xl bg-surface-sunken p-4 text-sm text-ink-soft">
-          <p>
-            <span className="font-medium text-ink">Detected UI pattern:</span> {response.understanding.detectedPattern}
-          </p>
-          <p>
-            <span className="font-medium text-ink">Structure:</span> {response.understanding.structure}
-          </p>
-          <p>
-            <span className="font-medium text-ink">Layout:</span> {response.understanding.layout}
-          </p>
-        </div>
+        <ul className="mt-3 list-disc space-y-1 rounded-xl bg-surface-sunken p-4 pl-8 text-sm text-ink-soft">
+          {response.understanding.summary.map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ul>
       )}
 
       {status === "done" && response?.understanding && response.images.length === 0 && (
@@ -74,25 +86,31 @@ export function ImageSearchPanel({ status, response, error, onSearch }: Props) {
               className="flex flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-panel"
             >
               <div className="flex h-40 items-center justify-center overflow-hidden bg-surface-sunken">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={img.thumbnailUrl ?? img.imageUrl}
-                  alt="UI design reference found on the internet"
-                  className="h-full w-full object-cover object-top"
-                />
+                <ResultImage img={img} />
               </div>
               <div className="flex flex-1 flex-col gap-2 p-4">
                 <p className="truncate text-xs text-ink-muted" title={img.sourceUrl}>
                   {img.sourceTitle || img.sourceUrl}
                 </p>
-                <a
-                  href={img.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-auto flex items-center justify-center gap-1.5 rounded-xl bg-brand-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-brand-600"
-                >
-                  Open Source Page <ExternalLink size={14} />
-                </a>
+                <div className="mt-auto flex gap-2">
+                  <a
+                    href={img.imageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-brand-600"
+                  >
+                    <ImageIcon size={14} /> Open Image
+                  </a>
+                  <a
+                    href={img.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-2 text-sm text-ink-soft transition hover:border-brand-400 hover:text-brand-600"
+                    title="Open the page this image was found on"
+                  >
+                    <ExternalLink size={14} />
+                  </a>
+                </div>
               </div>
             </div>
           ))}

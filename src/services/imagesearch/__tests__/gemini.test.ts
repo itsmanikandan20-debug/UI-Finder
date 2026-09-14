@@ -52,9 +52,13 @@ function mockGeminiResponse(text: string, ok = true, status = 200) {
 }
 
 const VALID_JSON = JSON.stringify({
-  detectedPattern: "Feature section",
-  structure: "4 feature items + large visual/content panel",
-  layout: "Left feature list -> Right visual",
+  summary: [
+    "Main container/card",
+    "A wide element at the top",
+    "4 small items on the left, arranged 2 x 2",
+    "One larger content panel on the right",
+    "Overall: two-column feature/content layout",
+  ],
   searchQuery: "feature section left list right visual UI design",
 });
 
@@ -82,9 +86,13 @@ describe("understandWireframe", () => {
     mockGeminiResponse(VALID_JSON);
     const result = await understandWireframe(makeWireframe());
     expect(result.understanding).toEqual({
-      detectedPattern: "Feature section",
-      structure: "4 feature items + large visual/content panel",
-      layout: "Left feature list -> Right visual",
+      summary: [
+        "Main container/card",
+        "A wide element at the top",
+        "4 small items on the left, arranged 2 x 2",
+        "One larger content panel on the right",
+        "Overall: two-column feature/content layout",
+      ],
       searchQuery: "feature section left list right visual UI design",
     });
     expect(result.diagnostic).toBe("ok");
