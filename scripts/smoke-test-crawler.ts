@@ -25,7 +25,7 @@ if (!FIXTURES_DIR) {
 async function analyzeFixture(browser: Awaited<ReturnType<typeof launchBrowser>>, file: string) {
   const page = await newPage(browser, 1440);
   await loadPage(page, `file://${path.join(FIXTURES_DIR, file)}`);
-  const raw = await extractRenderedTree(page);
+  const { root: raw } = await extractRenderedTree(page);
   const sections = detectSectionCandidates(raw, 1440);
   await page.close();
   return sections.map(rawSectionToLayoutNode);

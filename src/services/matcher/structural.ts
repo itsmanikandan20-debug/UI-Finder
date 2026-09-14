@@ -4,6 +4,7 @@
 
 import type { LayoutNode, NodeKind } from "@/lib/layout/types";
 import { ratioSimilarity } from "./util";
+import { bestPairingScore } from "./pairing";
 
 const KIND_GROUPS: Record<NodeKind, NodeKind[]> = {
   root: ["root", "section"],
@@ -50,20 +51,15 @@ export function structuralSimilarity(a: LayoutNode, b: LayoutNode): number {
   const countScore = ratioSimilarity(a.children.length, b.children.length);
   const repeatScore = repeatCompatibility(a, b);
 
-  // Children are always kept sorted top-to-bottom/left-to-right by the
-  // normalizer and the crawler alike, so positional pairing is a
-  // reasonable stand-in for full tree-edit-distance alignment without
-  // the combinatorial cost. Walk up to the LONGER side so a child with no
-  // counterpart on the other side drags the average down instead of
-  // being silently ignored.
-  const maxChildren = Math.max(a.children.length, b.children.length);
-  let pairTotal = 0;
-  for (let i = 0; i < maxChildren; i++) {
-    const ca = a.children[i];
-    const cb = b.children[i];
-    if (ca && cb) pairTotal += structuralSimilarity(ca, cb);
-  }
-  const avgPair = maxChildren > 0 ? pairTotal / maxChildren : 0;
+  // Match each child to its best real counterpart on the other side
+  // (by kind and substructure), not by array position. A candidate
+  // section that's missing a heading the wireframe has, or has its
+  // children in a different order, would otherwise get its children
+  // compared against the wrong index-aligned neighbor — scoring an
+  // exact structural match poorly just because something was inserted
+  // or removed earlier in the list. Unmatched children (when counts
+  // differ) count as zero, still pulling the average down as before.
+  const avgPair = bestPairingScore(a.children, b.children, structuralSimilarity);
 
   return 0.2 * kindScore + 0.15 * countScore + 0.1 * repeatScore + 0.55 * avgPair;
 }

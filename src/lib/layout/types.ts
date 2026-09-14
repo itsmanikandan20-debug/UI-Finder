@@ -111,6 +111,14 @@ export interface ExtractedSection {
   viewportWidth: number;
   root: LayoutNode;
   screenshotRef?: string;
+  /**
+   * A short text snippet captured from within this section, used ONLY to
+   * build a "scroll to text" deep link on the results page (never fed
+   * into structural matching — the matcher never reads this field).
+   */
+  anchorSnippet?: string;
+  /** How far down the full page this section sits (0 = top, 1 = bottom). Navigation-only. */
+  pageYRatio?: number;
   crawledAt: string;
 }
 

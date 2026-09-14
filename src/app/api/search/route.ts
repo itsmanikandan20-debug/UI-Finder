@@ -5,6 +5,7 @@ import type { LayoutNode, Wireframe } from "@/lib/layout/types";
 import { rankCandidates } from "@/services/matcher/rank";
 import { createSectionStore } from "@/services/crawler/store";
 import { resolveScreenshotUrl } from "@/lib/screenshot-url";
+import { buildSectionAnchor } from "@/lib/section-anchor";
 import type { SearchApiResponse, SectionSearchResult } from "@/lib/api-types";
 
 const layoutNodeSchema: z.ZodType<LayoutNode> = z.lazy(() =>
@@ -76,13 +77,19 @@ export async function POST(req: NextRequest) {
     const ranked = rankCandidates(section, candidates, { topK: TOP_K });
     return {
       wireframeSectionId: section.id,
-      matches: ranked.map((r) => ({
-        domain: r.section.domain,
-        websiteTitle: r.section.websiteTitle,
-        pageUrl: r.section.pageUrl,
-        screenshotUrl: resolveScreenshotUrl(r.section.screenshotRef),
-        score: r.score,
-      })),
+      matches: ranked.map((r) => {
+        const anchor = buildSectionAnchor(r.section.pageUrl, r.section.anchorSnippet, r.section.pageYRatio);
+        return {
+          domain: r.section.domain,
+          websiteTitle: r.section.websiteTitle,
+          pageUrl: r.section.pageUrl,
+          screenshotUrl: resolveScreenshotUrl(r.section.screenshotRef),
+          score: r.score,
+          openUrl: anchor.openUrl,
+          hasPreciseAnchor: anchor.hasPreciseAnchor,
+          approxPagePosition: anchor.approxPagePosition,
+        };
+      }),
     };
   });
 

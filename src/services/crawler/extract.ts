@@ -27,6 +27,14 @@ export interface RawDomNode {
   height: number;
   isImage: boolean;
   hasOwnText: boolean;
+  /**
+   * A short text snippet from within this node (via innerText), captured
+   * ONLY as a navigation convenience — building a browser "scroll to
+   * text" deep link so "Open Matching Section" can jump to the right
+   * spot on the live page. Never fed into extraction/matching; the
+   * matcher and LayoutNode conversion never read this field.
+   */
+  snippetText: string;
   children: RawDomNode[];
 }
 
@@ -65,6 +73,10 @@ function extractScript(maxDepth: number, maxBreadth: number): string {
         var hasOwnText = Array.prototype.some.call(el.childNodes, function (n) {
           return n.nodeType === 3 && !!n.textContent && n.textContent.trim().length > 0;
         });
+        // Navigation-only, see RawDomNode.snippetText — never used below
+        // this point for matching, only for an optional "scroll to text"
+        // deep link on the results page.
+        var snippetText = (el.innerText || "").replace(/\s+/g, " ").trim().slice(0, 80);
 
         var childEls = tag === "svg" ? [] : Array.prototype.filter.call(el.children, function (c) {
           return !HARD_SKIP[c.tagName.toLowerCase()];
@@ -101,15 +113,25 @@ function extractScript(maxDepth: number, maxBreadth: number): string {
           height: rect.height,
           isImage: !!isImage,
           hasOwnText: hasOwnText,
+          snippetText: snippetText,
           children: children
         };
       }
 
-      return walk(document.body, 0);
+      return {
+        root: walk(document.body, 0),
+        documentHeight: document.documentElement.scrollHeight
+      };
     })()
   `;
 }
 
-export async function extractRenderedTree(page: Page): Promise<RawDomNode | null> {
-  return page.evaluate(extractScript(MAX_DEPTH, MAX_BREADTH)) as Promise<RawDomNode | null>;
+export interface ExtractedTree {
+  root: RawDomNode | null;
+  /** Full page scroll height, used only to compute "~N% down the page" for navigation. */
+  documentHeight: number;
+}
+
+export async function extractRenderedTree(page: Page): Promise<ExtractedTree> {
+  return page.evaluate(extractScript(MAX_DEPTH, MAX_BREADTH)) as Promise<ExtractedTree>;
 }

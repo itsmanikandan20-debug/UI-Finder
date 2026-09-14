@@ -42,7 +42,7 @@ rankCandidates()                src/services/matcher/rank.ts
         │  signature-vector pre-filter → detailed structural/geometry/
         │  spacing/visual scoring → ranked matches
         ▼
-Results UI                      match cards, similarity score, "Open Live Website"
+Results UI                      match cards, similarity score, "Open Matching Section"
 ```
 
 Separately, **the crawler** (`src/services/crawler/`) is what populates
@@ -53,10 +53,26 @@ analyzePage(url)                 src/services/crawler/analyzePage.ts
   ├─ SSRF guard + robots.txt check
   ├─ Playwright: load the real page, wait for it to render
   ├─ extractRenderedTree()       walks the live DOM → geometry + isImage/hasText
-  ├─ detectSectionCandidates()   splits the page into sections by geometry, not tags
+  ├─ detectSectionCandidates()   walks the WHOLE tree for section-sized sub-regions,
+  │                              not just top-level children — see below
   ├─ rawSectionToLayoutNode()    same repeated-group/gap/alignment logic as the editor
-  └─ captureSectionScreenshot()  compressed crop of just that section
+  └─ captureSectionScreenshot()  compressed crop of just THAT specific sub-region
 ```
+
+**Section detection walks the entire tree, not just top-level children.**
+A real, complex page (Apple/GitHub/Webflow-scale sites especially) is
+usually just a handful of giant top-level wrapper `<div>`s, each silently
+containing dozens of unrelated sub-blocks. Looking only at direct
+children treats the whole page as one enormous "section," diluting any
+real match into noise and making a specific matching sub-region (e.g.
+exactly a 4-card feature grid) impossible to isolate, screenshot, or link
+to on its own. `detectSectionCandidates()` (`src/services/crawler/sections.ts`)
+instead walks every node, and any reasonably-sized sub-tree with a small,
+coherent child count becomes its own independently-scoreable candidate —
+so the matcher can find and rank the specific region that actually
+resembles your sketch, not just "somewhere on this page." The screenshot
+shown for a result is always cropped from that exact candidate — the same
+box used to compute its score, never a different one.
 
 The wireframe editor and the crawler both reduce their input down to the
 exact same `LayoutNode` tree shape (`src/lib/layout/types.ts`). That
@@ -194,7 +210,20 @@ touching the rest of the scorer.
 
 Results are labeled `"N similarity"` — an internal score, not a
 probability or a guarantee — per the product's own anti-overclaiming
-requirement.
+requirement. The results UI's "Why this matched" panel renders these five
+values directly (as bars) — never separate, invented numbers.
+
+**Children are matched by best-fit, not by array position.** Comparing
+`a.children[i]` against `b.children[i]` breaks as soon as a candidate is
+missing one sibling the wireframe has, or has its children in a different
+order: the wireframe's card-row would get compared against whatever the
+candidate happens to have at that same index, instead of the candidate's
+actual card-row — scoring a genuinely close, tightly-scoped match *worse*
+than a loose, coincidentally-index-aligned one. `src/services/matcher/pairing.ts`
+instead scores every possible pair and greedily keeps the best-scoring
+ones (cheap at the small child counts a section actually has); an
+unmatched child on the longer side still counts as zero, so missing
+structure still costs something.
 
 Retrieval is two-stage (`src/services/matcher/rank.ts`): a cheap,
 deterministic 32-dimension signature vector (`src/lib/layout/signature.ts`,
@@ -214,16 +243,36 @@ one env var.
 
 ```bash
 cp .env.example .env.local     # fill in DATABASE_URL
-npm run db:migrate             # applies db/migrations/0001_init.sql
+npm run db:migrate             # applies db/migrations/*.sql in order
 npm run crawl                  # now writes to Postgres instead of the JSON file
 ```
 
-Schema (`db/migrations/0001_init.sql`): `websites`, `sections`
-(structure_json + a `vector(32)` embedding + an ivfflat index), and an
-unused-for-now `wireframes` table kept for a future "save my sketch"
-feature. Nothing stores full page HTML/CSS or full-page screenshots —
-only structural JSON, a small vector, and a reference to a compressed
-section-crop thumbnail.
+Schema (`db/migrations/0001_init.sql`, `0002_anchor_fields.sql`):
+`websites`, `sections` (structure_json + a `vector(32)` embedding + an
+ivfflat index + navigation-only `anchor_snippet`/`page_y_ratio` — see
+"Opening the exact matched section" below), and an unused-for-now
+`wireframes` table kept for a future "save my sketch" feature. Nothing
+stores full page HTML/CSS or full-page screenshots — only structural
+JSON, a small vector, and a reference to a compressed section-crop
+thumbnail.
+
+## Opening the exact matched section
+
+A search result is never just "the domain" — it's a specific, screenshotted
+sub-region of a specific page, and every result carries all four of:
+which website, which page URL, the exact detected section (as scored
+`LayoutNode` data), and a screenshot cropped from that exact same box.
+
+"Open Matching Section" tries to actually scroll there: it builds a
+browser [text-fragment](https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Fragment/Text_fragments)
+deep link (`#:~:text=...`) from a short snippet of that section's own
+visible text, captured only for this purpose — it's never fed into
+structural matching (see `RawDomNode.snippetText` in
+`src/services/crawler/extract.ts`, and `src/lib/section-anchor.ts`).
+Chrome and Edge scroll straight to it; other browsers just open the page
+normally. When no usable snippet was captured (an image-only section, for
+instance), the button is honest about it: it opens the page normally and
+shows "≈N% down the page" instead of implying precision it doesn't have.
 
 ## Crawler safety
 

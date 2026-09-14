@@ -30,7 +30,11 @@ export interface AnalyzePageResult {
 
 export async function analyzePage(url: string, options: AnalyzePageOptions = {}): Promise<AnalyzePageResult> {
   const viewportWidth = options.viewportWidth ?? 1440;
-  const maxSections = options.maxSections ?? 10;
+  // Recursive section detection (src/services/crawler/sections.ts) finds
+  // many more, more specific candidates per page than the old top-level-
+  // only pass did — 40 keeps a real page's worth of granularity without
+  // an unbounded crawl.
+  const maxSections = options.maxSections ?? 40;
   const warnings: string[] = [];
 
   const safety = await checkUrlSafetyResolved(url);
@@ -60,7 +64,7 @@ export async function analyzePage(url: string, options: AnalyzePageOptions = {})
 
     const finalUrl = page.url();
     const pageTitle = await page.title().catch(() => undefined);
-    const rawRoot = await extractRenderedTree(page);
+    const { root: rawRoot, documentHeight } = await extractRenderedTree(page);
     const candidates = detectSectionCandidates(rawRoot, viewportWidth).slice(0, maxSections);
     if (candidates.length === 0) {
       warnings.push("No distinct sections could be detected on this page.");
@@ -91,6 +95,12 @@ export async function analyzePage(url: string, options: AnalyzePageOptions = {})
         viewportWidth,
         root: layoutRoot,
         screenshotRef,
+        // Navigation-only fields (never used in scoring — see
+        // RawDomNode.snippetText): a short in-section text snippet for a
+        // browser "scroll to text" deep link, and how far down the page
+        // this section sits, for when no such link is possible.
+        anchorSnippet: raw.snippetText || undefined,
+        pageYRatio: documentHeight > 0 ? Math.min(1, Math.max(0, raw.y / documentHeight)) : undefined,
         crawledAt: new Date().toISOString(),
       });
     }
