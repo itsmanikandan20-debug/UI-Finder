@@ -184,6 +184,69 @@ describe("understandWireframe", () => {
     expect(fetchMock.mock.calls.some(([url]) => (url as string).includes("gemini-2.5-flash"))).toBe(true);
   });
 
+  it("reads a replacement model name straight out of the 404 error message and tries it next", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("gemini-2.0-flash")) {
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({
+            error: { message: "This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.6-flash instead." },
+          }),
+        } as Response;
+      }
+      if (url.includes("gemini-3.6-flash")) {
+        return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: VALID_JSON }] } }] }) } as Response;
+      }
+      throw new Error(`unexpected model requested: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await understandWireframe(makeWireframe());
+    expect(result.understanding).not.toBeNull();
+    expect(result.diagnostic).toBe("ok");
+    // The suggested model jumps the queue — tried right after the one that named it, not after every other hardcoded guess.
+    const calledModels = fetchMock.mock.calls.map(([url]) => url as string);
+    expect(calledModels[0]).toContain("gemini-2.0-flash");
+    expect(calledModels[1]).toContain("gemini-3.6-flash");
+  });
+
+  it("follows a suggestion even from a model ListModels itself discovered (the real case: a listed model that's since been retired)", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes(":generateContent")) {
+        if (url.includes("gemini-2.5-flash")) {
+          return {
+            ok: false,
+            status: 404,
+            json: async () => ({
+              error: {
+                message:
+                  "This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features.",
+              },
+            }),
+          } as Response;
+        }
+        if (url.includes("gemini-3.6-flash")) {
+          return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: VALID_JSON }] } }] }) } as Response;
+        }
+        // The 3 hardcoded candidates — none of them exist for this key.
+        return { ok: false, status: 404, json: async () => ({ error: { message: "model not found" } }) } as Response;
+      }
+      // ListModels: only gemini-2.5-flash is offered.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ models: [{ name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] }] }),
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await understandWireframe(makeWireframe());
+    expect(result.understanding).not.toBeNull();
+    expect(result.diagnostic).toBe("ok");
+    const calledModels = fetchMock.mock.calls.map(([url]) => url as string);
+    expect(calledModels.some((u) => u.includes("gemini-2.5-flash"))).toBe(true);
+    expect(calledModels.some((u) => u.includes("gemini-3.6-flash"))).toBe(true);
+  });
+
   it("reports a clear diagnostic when ListModels has no generateContent-capable model", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes(":generateContent")) {
@@ -194,7 +257,7 @@ describe("understandWireframe", () => {
     vi.stubGlobal("fetch", fetchMock);
     const result = await understandWireframe(makeWireframe());
     expect(result.understanding).toBeNull();
-    expect(result.diagnostic).toContain("no model available that supports generateContent");
+    expect(result.diagnostic).toContain("no untried model available that supports generateContent");
   });
 
   it("reports a network error when the request throws", async () => {

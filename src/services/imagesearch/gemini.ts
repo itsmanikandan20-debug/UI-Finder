@@ -9,14 +9,17 @@ import { z } from "zod";
 import { getMatchableSections } from "@/lib/layout/normalize";
 import type { LayoutNode, Wireframe } from "@/lib/layout/types";
 
-// Google renames/retires Gemini model ids over time, and a given API key's
-// account can have access to a different set than another — a single
-// hardcoded model name is exactly the kind of thing that silently starts
-//404ing. Tried in order; only a 404 (model not found/unavailable) moves on
-// to the next one — any other failure (bad key, blocked content, quota) is
-// real and reported immediately rather than retried three times over.
+// Google renames/retires Gemini model ids over time (and even a model that
+// still LISTS as available can turn out to be retired the moment you call
+// it), so a hardcoded model name is exactly the kind of thing that silently
+// starts 404ing. These are just a fast-path starting guess — the real
+// resilience is in understandWireframe(): a 404's error message usually
+// names the replacement model directly ("...use models/X instead"), which
+// is read and tried next; only if that isn't available does it fall back
+// to asking ListModels what this key can actually use.
 const GEMINI_MODEL_CANDIDATES = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"];
 const FETCH_TIMEOUT_MS = 15000;
+const MAX_MODEL_ATTEMPTS = 6;
 
 export interface WireframeUnderstanding {
   detectedPattern: string;
@@ -75,13 +78,22 @@ interface GeminiModelsListResponse {
   models?: { name?: string; supportedGenerationMethods?: string[] }[];
 }
 
+/** Google's 404 messages for a retired model usually name the replacement directly, e.g. "...update your code to use models/gemini-3.6-flash...". Reading it beats hardcoding a version number that will just as surely go stale. */
+function extractSuggestedModel(message: string): string | undefined {
+  const match = message.match(/use\s+models\/([\w.-]+)/i);
+  return match?.[1];
+}
+
 /**
- * Last resort when every hardcoded candidate 404s: ask Google directly
- * which models this specific key can actually use, rather than guessing
- * more names. Prefers a "flash" model (fast/cheap) if more than one
- * qualifies.
+ * Last resort when every candidate (hardcoded + suggested-by-error) 404s:
+ * ask Google directly which models this specific key can actually use,
+ * rather than guessing more names. Prefers a "flash" model (fast/cheap) if
+ * more than one qualifies, and skips anything already tried and failed.
  */
-async function discoverAvailableModel(apiKey: string): Promise<{ model: string | null; diagnostic: string }> {
+async function discoverAvailableModel(
+  apiKey: string,
+  exclude: Set<string>
+): Promise<{ model: string | null; diagnostic: string }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
   let res: Response;
   try {
@@ -108,22 +120,28 @@ async function discoverAvailableModel(apiKey: string): Promise<{ model: string |
     return { model: null, diagnostic: "Gemini ListModels response was not valid JSON" };
   }
 
-  const usable = (data.models ?? []).filter(
-    (m): m is { name: string; supportedGenerationMethods?: string[] } =>
-      typeof m.name === "string" && Boolean(m.supportedGenerationMethods?.includes("generateContent"))
-  );
-  const chosen = usable.find((m) => m.name.includes("flash")) ?? usable[0];
+  const usable = (data.models ?? [])
+    .filter(
+      (m): m is { name: string; supportedGenerationMethods?: string[] } =>
+        typeof m.name === "string" && Boolean(m.supportedGenerationMethods?.includes("generateContent"))
+    )
+    .map((m) => m.name.replace(/^models\//, ""))
+    .filter((name) => !exclude.has(name));
+
+  const chosen = usable.find((name) => name.includes("flash")) ?? usable[0];
   if (!chosen) {
-    return { model: null, diagnostic: "This API key has no model available that supports generateContent" };
+    return { model: null, diagnostic: "This API key has no untried model available that supports generateContent" };
   }
-  return { model: chosen.name.replace(/^models\//, ""), diagnostic: "ok" };
+  return { model: chosen, diagnostic: "ok" };
 }
 
 interface GeminiAttempt {
   understanding: WireframeUnderstanding | null;
   diagnostic: string;
-  /** True only for "this model name isn't available for this key" (HTTP 404) — worth trying the next candidate model. Any other failure is reported as-is. */
+  /** True only for "this model name isn't available for this key" (HTTP 404) — worth trying another model. Any other failure is reported as-is. */
   retryNextModel: boolean;
+  /** A replacement model name Google's own error message pointed at, if any — tried next, ahead of the remaining hardcoded guesses. */
+  suggestedModel?: string;
 }
 
 async function callGemini(model: string, prompt: string, apiKey: string): Promise<GeminiAttempt> {
@@ -156,9 +174,13 @@ async function callGemini(model: string, prompt: string, apiKey: string): Promis
 
   if (!res.ok) {
     let detail = "";
+    let suggestedModel: string | undefined;
     try {
       const errorBody = (await res.json()) as GeminiErrorBody;
-      if (errorBody.error?.message) detail = ` — ${errorBody.error.message}`;
+      if (errorBody.error?.message) {
+        detail = ` — ${errorBody.error.message}`;
+        suggestedModel = extractSuggestedModel(errorBody.error.message);
+      }
     } catch {
       // Body wasn't JSON (or had no error.message) — report the bare status only.
     }
@@ -166,6 +188,7 @@ async function callGemini(model: string, prompt: string, apiKey: string): Promis
       understanding: null,
       diagnostic: `Gemini responded with HTTP ${res.status} for model "${model}"${detail}`,
       retryNextModel: res.status === 404,
+      suggestedModel,
     };
   }
 
@@ -203,7 +226,17 @@ async function callGemini(model: string, prompt: string, apiKey: string): Promis
   return { understanding: result.data, diagnostic: "ok", retryNextModel: false };
 }
 
-/** Fails open (null understanding + a diagnostic) on any error — this is one optional feature among several, never something that should crash the page. */
+/**
+ * Fails open (null understanding + a diagnostic) on any error — this is one
+ * optional feature among several, never something that should crash the
+ * page. Tries, in order: the hardcoded candidates (jumping ahead to
+ * whatever replacement model a 404's own error message names, as soon as
+ * it names one — including one suggested by a model ListModels itself
+ * offered, since a listed model can still turn out to be retired the
+ * moment it's actually called); then, once those are exhausted, asks
+ * ListModels once for anything else usable. Capped so a pathological chain
+ * of suggestions can't loop forever.
+ */
 export async function understandWireframe(wireframe: Wireframe): Promise<GeminiUnderstandingResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -211,22 +244,38 @@ export async function understandWireframe(wireframe: Wireframe): Promise<GeminiU
   }
 
   const prompt = buildPrompt(wireframe);
+  const tried = new Set<string>();
+  const queue = [...GEMINI_MODEL_CANDIDATES];
   let lastDiagnostic = "Gemini returned no understanding for this wireframe";
+  let askedListModels = false;
 
-  for (const model of GEMINI_MODEL_CANDIDATES) {
+  while (tried.size < MAX_MODEL_ATTEMPTS) {
+    if (queue.length === 0) {
+      if (askedListModels) break;
+      askedListModels = true;
+      const discovered = await discoverAvailableModel(apiKey, tried);
+      if (!discovered.model) {
+        lastDiagnostic = `${lastDiagnostic} (then: ${discovered.diagnostic})`;
+        break;
+      }
+      queue.push(discovered.model);
+      continue;
+    }
+
+    const model = queue.shift() as string;
+    if (tried.has(model)) continue;
+    tried.add(model);
+
     const attempt = await callGemini(model, prompt, apiKey);
     if (attempt.retryNextModel) {
       lastDiagnostic = attempt.diagnostic;
+      if (attempt.suggestedModel && !tried.has(attempt.suggestedModel)) {
+        queue.unshift(attempt.suggestedModel);
+      }
       continue;
     }
     return { understanding: attempt.understanding, diagnostic: attempt.diagnostic };
   }
 
-  // Every hardcoded guess 404'd — ask Google what this key can actually use.
-  const discovered = await discoverAvailableModel(apiKey);
-  if (!discovered.model) {
-    return { understanding: null, diagnostic: `${lastDiagnostic} (then: ${discovered.diagnostic})` };
-  }
-  const finalAttempt = await callGemini(discovered.model, prompt, apiKey);
-  return { understanding: finalAttempt.understanding, diagnostic: finalAttempt.diagnostic };
+  return { understanding: null, diagnostic: lastDiagnostic };
 }
