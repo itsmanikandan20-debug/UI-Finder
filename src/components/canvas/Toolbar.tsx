@@ -11,8 +11,7 @@ import {
   Square,
   Copy,
   Trash2,
-  Search,
-  Loader2,
+  Wand2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { EditorElementKind, ViewportLabel } from "@/lib/layout/types";
@@ -25,10 +24,9 @@ interface Props {
   onDuplicate: () => void;
   onDelete: () => void;
   onClear: () => void;
-  onFindMatches: () => void;
+  onAnalyze: () => void;
   canEdit: boolean;
-  canSearch: boolean;
-  searching: boolean;
+  canAnalyze: boolean;
 }
 
 const ADDABLE: { kind: EditorElementKind; icon: LucideIcon }[] = [
@@ -49,10 +47,9 @@ export function Toolbar({
   onDuplicate,
   onDelete,
   onClear,
-  onFindMatches,
+  onAnalyze,
   canEdit,
-  canSearch,
-  searching,
+  canAnalyze,
 }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-white p-3 shadow-panel">
@@ -106,12 +103,12 @@ export function Toolbar({
         </select>
         <button
           type="button"
-          onClick={onFindMatches}
-          disabled={searching || !canSearch}
+          onClick={onAnalyze}
+          disabled={!canAnalyze}
           className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {searching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-          {searching ? "Searching..." : "Find Matches"}
+          <Wand2 size={16} />
+          Analyze Wireframe
         </button>
       </div>
     </div>

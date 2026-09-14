@@ -5,8 +5,11 @@ import { useState } from "react";
 import { Toolbar } from "@/components/canvas/Toolbar";
 import { useEditorState } from "@/features/wireframe-editor/useEditorState";
 import { normalizeWireframe } from "@/lib/layout/normalize";
+import { describeWireframe } from "@/lib/layout/describe";
+import { WireframeSummary } from "@/components/results/WireframeSummary";
 import { ResultsPanel } from "@/components/results/ResultsPanel";
 import type { SearchApiResponse, SearchRequestBody } from "@/lib/api-types";
+import type { Wireframe } from "@/lib/layout/types";
 
 // Konva touches `window` at import time — must never run during SSR.
 const WireframeCanvas = dynamic(
@@ -14,20 +17,39 @@ const WireframeCanvas = dynamic(
   { ssr: false, loading: () => <div className="h-[500px] animate-pulse rounded-2xl bg-surface-sunken" /> }
 );
 
+// Draw → Analyze (show what was understood) → confirm → Search → Results.
+// The search API is never called until the designer confirms the summary.
+type Stage = "editing" | "reviewing" | "results";
+
 export default function HomePage() {
   const editor = useEditorState();
+  const [stage, setStage] = useState<Stage>("editing");
+  const [wireframe, setWireframe] = useState<Wireframe | null>(null);
+  const [summary, setSummary] = useState<string[]>([]);
   const [results, setResults] = useState<SearchApiResponse | null>(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleFindMatches() {
+  function handleAnalyze() {
+    setError(null);
+    const doc = editor.exportDocument();
+    const nextWireframe = normalizeWireframe(doc, doc.id, new Date().toISOString());
+    setWireframe(nextWireframe);
+    setSummary(describeWireframe(nextWireframe));
+    setResults(null);
+    setStage("reviewing");
+  }
+
+  function handleBackToEdit() {
+    setStage("editing");
+  }
+
+  async function handleConfirmSearch() {
+    if (!wireframe) return;
     setSearching(true);
     setError(null);
     try {
-      const doc = editor.exportDocument();
-      const wireframe = normalizeWireframe(doc, doc.id, new Date().toISOString());
       const body: SearchRequestBody = { wireframe };
-
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -38,6 +60,7 @@ export default function HomePage() {
         throw new Error(payload?.error ?? "Search failed.");
       }
       setResults((await res.json()) as SearchApiResponse);
+      setStage("results");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -62,10 +85,9 @@ export default function HomePage() {
         onDuplicate={editor.duplicateSelected}
         onDelete={editor.deleteSelected}
         onClear={editor.clearAll}
-        onFindMatches={handleFindMatches}
+        onAnalyze={handleAnalyze}
         canEdit={editor.selectedId !== null}
-        canSearch={editor.elements.length > 0}
-        searching={searching}
+        canAnalyze={editor.elements.length > 0}
       />
 
       <div className="mt-4">
@@ -89,7 +111,18 @@ export default function HomePage() {
         <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       )}
 
-      {results && (
+      {(stage === "reviewing" || stage === "results") && (
+        <div className="mt-6">
+          <WireframeSummary
+            summary={summary}
+            onConfirm={handleConfirmSearch}
+            onBack={handleBackToEdit}
+            searching={searching}
+          />
+        </div>
+      )}
+
+      {stage === "results" && results && (
         <div className="mt-10">
           <h2 className="mb-4 text-lg font-semibold text-ink">Matches</h2>
           <ResultsPanel response={results} />

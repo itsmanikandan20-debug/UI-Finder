@@ -48,7 +48,7 @@ export function ResultsPanel({ response }: { response: SearchApiResponse }) {
       ) : (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {section.matches.map((m, i) => (
-            <MatchCard key={`${m.pageUrl}-${i}`} rank={i + 1} match={m} />
+            <MatchCard key={`${m.pageUrl}-${i}`} match={m} />
           ))}
         </div>
       )}
