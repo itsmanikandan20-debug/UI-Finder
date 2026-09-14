@@ -5,8 +5,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import postgres from "postgres";
+import { loadEnvLocal } from "./load-env";
 
 async function main() {
+  await loadEnvLocal();
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     console.error("DATABASE_URL is not set — nothing to migrate. See .env.example.");

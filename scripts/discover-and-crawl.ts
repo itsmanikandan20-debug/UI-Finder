@@ -30,6 +30,7 @@ import { fetchSitemapUrls } from "@/services/discovery/sitemap";
 import { fetchCompanyDirectoryBatch } from "@/services/discovery/dbpedia";
 import { seedQueueIfEmpty, enqueueDiscovered } from "@/services/discovery/queue-helpers";
 import { SEED_SITES } from "./seed-sites";
+import { loadEnvLocal } from "./load-env";
 
 const SCREENSHOT_DIR = path.join(process.cwd(), "data", "screenshots");
 const DEFAULT_BATCH_SIZE = 8; // "start with a small safe batch" — grow this once you trust the results
@@ -45,6 +46,7 @@ function parseArgs(): { batchSize: number } {
 }
 
 async function main() {
+  await loadEnvLocal();
   const { batchSize } = parseArgs();
   await fs.mkdir(SCREENSHOT_DIR, { recursive: true });
 

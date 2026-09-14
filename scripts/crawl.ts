@@ -12,11 +12,13 @@ import { promises as fs } from "node:fs";
 import { analyzePage, CRAWLER_VERSION } from "@/services/crawler/analyzePage";
 import { createSectionStore } from "@/services/crawler/store";
 import { SEED_SITES } from "./seed-sites";
+import { loadEnvLocal } from "./load-env";
 
 const SCREENSHOT_DIR = path.join(process.cwd(), "data", "screenshots");
 const CRAWL_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 
 async function main() {
+  await loadEnvLocal();
   const args = process.argv.slice(2);
   const force = args.includes("--force");
   const urls = args.filter((a) => a !== "--force").length > 0 ? args.filter((a) => a !== "--force") : SEED_SITES;
